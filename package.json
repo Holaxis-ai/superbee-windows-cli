@@ -27,7 +27,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "test": "node --test --import ./test/register.mjs test/*.test.ts test/*.test.mjs",
+    "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc --noEmit",
     "build": "node build.mjs",
     "verify:package": "node scripts/verify-package.mjs",
