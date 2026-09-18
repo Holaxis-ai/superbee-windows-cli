@@ -1,17 +1,19 @@
+import { isMain } from './is-main.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, lstat, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { t } from 'tar';
 import { sha256, verifyInputs } from './inputs.mjs';
 import { validateEmbeddedEngine, verifyProvenance } from './provenance.mjs';
 import { root, readLockedPackages } from './registry-lock.mjs';
 export { root, names, exactVersion, validatePackage, validateLockedPackages, readLockedPackages } from './registry-lock.mjs';
 export function verifyIntegrity(bytes,integrity) {assert.equal('sha512-'+createHash('sha512').update(bytes).digest('base64'),integrity,'tarball integrity mismatch');}
-export async function fetchBytes(url,limit=32*1024*1024) {
- const response=await fetch(url,{signal:AbortSignal.timeout(60_000),redirect:'error',headers:{Accept:'application/vnd.github+json','User-Agent':'superbee-windows-registry-build'}});
+export async function fetchBytes(url,limit=32*1024*1024,fetcher=fetch) {
+ const accept=new URL(url).hostname==='api.github.com' ? 'application/vnd.github+json' : '*/*';
+ const response=await fetcher(url,{signal:AbortSignal.timeout(60_000),redirect:'error',headers:{Accept:accept,'User-Agent':'superbee-windows-registry-build'}});
  assert.ok(response.ok,`download failed: ${response.status} ${url}`);
  const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.length;assert.ok(size<=limit,'download exceeds byte limit');chunks.push(chunk);}
  return Buffer.concat(chunks);
@@ -85,6 +87,6 @@ export async function acquireInputs(output=path.join(root,'inputs'),directory=ro
  const recordPath=path.join(output,'inputs.json');await writeFile(recordPath,JSON.stringify(record,null,2)+'\n');
  return {recordPath,recordSha256:sha256(await readFile(recordPath))};
 }
-if(process.argv[1] && import.meta.url===pathToFileURL(await realpath(process.argv[1])).href){
+if(await isMain(import.meta.url)){
  const result=await acquireInputs(path.resolve(process.argv[2] ?? 'inputs'));await verifyInputs(result.recordPath);console.log(JSON.stringify(result));
 }

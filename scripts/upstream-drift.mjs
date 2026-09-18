@@ -1,8 +1,8 @@
+import { isMain } from './is-main.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { appendFile, readFile, writeFile, realpath } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { root, names, validatePackage, readLockedPackages } from './registry-lock.mjs';
 import {createHash} from 'node:crypto';
 const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -76,4 +76,4 @@ export function validateDriftTopology(workflow){
  for(const m of workflow.matchAll(/uses: ([^\n]+)/g))assert.match(m[1],/^actions\/[a-z-]+@[a-f0-9]{40}$/);
  assert.equal((workflow.match(/uses: actions\/checkout@/g)??[]).length,(workflow.match(/persist-credentials: false/g)??[]).length);
 }
-if(process.argv[1] && import.meta.url===pathToFileURL(await realpath(process.argv[1])).href){try{process.exitCode=await main(process.argv[2]);}catch(error){console.error(error);process.exitCode=1;}}
+if(await isMain(import.meta.url)){try{process.exitCode=await main(process.argv[2]);}catch(error){console.error(error);process.exitCode=1;}}

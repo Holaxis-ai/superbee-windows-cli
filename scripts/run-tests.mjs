@@ -1,8 +1,9 @@
+import { isMain } from './is-main.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readdir, realpath } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export async function runTests(directory=root,run=spawnSync) {
  const files=(await readdir(path.join(directory,'test'),{withFileTypes:true}))
@@ -15,4 +16,4 @@ export async function runTests(directory=root,run=spawnSync) {
  if(result.signal)console.error(`Test process terminated by ${result.signal}`);
  return result.status ?? 1;
 }
-if(process.argv[1] && import.meta.url===pathToFileURL(await realpath(process.argv[1])).href) process.exitCode=await runTests();
+if(await isMain(import.meta.url)) process.exitCode=await runTests();

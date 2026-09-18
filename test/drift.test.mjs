@@ -40,7 +40,7 @@ test('drift workflow bypass mutations fail closed',()=>{
 
 test('unresolved report runs without installed dependencies or registry network',async()=>{
  const dir=await mkdtemp(path.join(tmpdir(),'drift-report-bootstrap-'));try{
- await mkdir(path.join(dir,'scripts'));for(const name of ['upstream-drift.mjs','registry-lock.mjs'])await writeFile(path.join(dir,'scripts',name),await readFile(new URL('../scripts/'+name,import.meta.url)));
+ await mkdir(path.join(dir,'scripts'));for(const name of ['upstream-drift.mjs','registry-lock.mjs','is-main.mjs'])await writeFile(path.join(dir,'scripts',name),await readFile(new URL('../scripts/'+name,import.meta.url)));
  const result=spawnSync(process.execPath,[path.join(dir,'scripts/upstream-drift.mjs'),'report'],{encoding:'utf8',env:{...process.env,OLD_PAIR:'',CANDIDATE_PAIR:'',INPUTS_RESULT:'failure',CONSUMER_RESULT:'skipped'}});
  assert.equal(result.status,1,result.stderr);assert.match(result.stdout,/Resolution missing or invalid/);assert.match(result.stdout,/unavailable/);
  }finally{await rm(dir,{recursive:true,force:true});}
