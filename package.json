@@ -1,0 +1,43 @@
+{
+  "name": "@superbee/windows-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Experimental independent Windows adapters and executable for Superbee.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "win32"
+  ],
+  "bin": {
+    "superbee-windows": "dist/superbee-windows.mjs"
+  },
+  "exports": {
+    "./filesystem": {
+      "types": "./dist/filesystem.d.ts",
+      "default": "./dist/filesystem.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "SKILL.md",
+    "references",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test --import ./test/register.mjs test/*.test.ts test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:native": "node scripts/windows-installed-package-proof.mjs",
+    "prepublishOnly": "node -e \"console.error('This experimental Windows distribution is private staging; publication is not configured'); process.exit(1)\"",
+    "produce:inputs": "node scripts/produce-inputs.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.0",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

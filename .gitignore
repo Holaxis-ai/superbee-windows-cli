@@ -1,0 +1,8 @@
+node_modules/
+dist/
+inputs/
+out/
+SKILL.md
+references/
+*.tgz
+*.log

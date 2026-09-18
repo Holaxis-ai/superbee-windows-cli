@@ -1,0 +1,13 @@
+{
+  "sha256": "1ced4d445b03283fb7c9a08a05f5e70b80966bc5a2fc9ae56321745ca1ff29b2",
+  "scenarios": [
+    "renamed-distribution",
+    "catalog-lifecycle",
+    "local-remote-sync",
+    "ui-url-lifecycle",
+    "managed-document-lifecycle",
+    "mcp-config-lifecycle",
+    "private-state-and-pipe",
+    "recipe-exact-apply"
+  ]
+}

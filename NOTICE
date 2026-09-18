@@ -1,0 +1,7 @@
+Superbee Windows distribution
+Copyright 2026 Holaxis
+
+Windows host implementations and native regression scenarios were extracted from
+Holaxis-ai/superbee, commit 939a630027c4cc4d195e2dd92286efbc7b59455a,
+under the Apache License, Version 2.0. Shared runtime code is consumed as packed
+@superbee/cli and @superbee/core inputs; it is not maintained as a source fork here.

@@ -1,0 +1,250 @@
+{
+  "baseline": "939a630027c4cc4d195e2dd92286efbc7b59455a",
+  "cases": [
+    {
+      "source_file": "packages/cli/test/host-command.test.ts",
+      "source_case": "Windows command resolution honors PATH and PATHEXT and safely launches cmd shims",
+      "owner": "windows",
+      "target_file": "test/command.test.ts",
+      "target_case": "Windows command resolution honors PATH and PATHEXT and safely launches cmd shims"
+    },
+    {
+      "source_file": "packages/cli/test/host-command.test.ts",
+      "source_case": "Windows command resolution distinguishes an absent command from unreadable command state",
+      "owner": "windows",
+      "target_file": "test/command.test.ts",
+      "target_case": "Windows command resolution distinguishes an absent command from unreadable command state"
+    },
+    {
+      "source_file": "packages/cli/test/host-command.test.ts",
+      "source_case": "cmd shim execution refuses shell-control bytes before invoking the command processor",
+      "owner": "windows",
+      "target_file": "test/command.test.ts",
+      "target_case": "cmd shim execution refuses shell-control bytes before invoking the command processor"
+    },
+    {
+      "source_file": "packages/cli/test/hook-compatibility.test.ts",
+      "source_case": "Windows writer and classifier round-trip one absolute Node/package launch",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows hook writer and exact lexer round trip generated path tokens"
+    },
+    {
+      "source_file": "packages/cli/test/hook-compatibility.test.ts",
+      "source_case": "Windows hook grammar rejects expansion, controls, mixed envelopes, and noncanonical slashes",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows hook writer and exact lexer round trip generated path tokens"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm-prefix probing binds npm to the running Node installation, not PATH",
+      "owner": "windows",
+      "target_file": "test/npm-prefix.test.ts",
+      "target_case": "Windows npm-prefix probing binds npm to the running Node installation, not PATH"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm-prefix probing fails closed for missing or ambiguous runtime layouts",
+      "owner": "windows",
+      "target_file": "test/npm-prefix.test.ts",
+      "target_case": "Windows npm-prefix probing fails closed for missing or ambiguous runtime layouts"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm-prefix probing rejects npx cache segments case-insensitively",
+      "owner": "windows",
+      "target_file": "test/npm-prefix.test.ts",
+      "target_case": "Windows npm-prefix probing rejects npx cache segments case-insensitively"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm authority proves the prefix shim but launches absolute Node plus package entry",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/install-authority-policy.test.ts",
+      "target_case": "Host-supplied npm authority proves the prefix shim but launches absolute Node plus package entry"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm authority fails closed on cwd-bearing PATH entries",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/install-authority-policy.test.ts",
+      "target_case": "Host-supplied npm authority fails closed on cwd-bearing PATH entries"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm authority honors PATHEXT order and refuses an earlier shadowing command",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/install-authority-policy.test.ts",
+      "target_case": "Host-supplied npm authority honors candidate order and refuses an earlier shadowing command"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows canonical package authority cannot be rescued by a later stale legacy alias",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/install-authority-policy.test.ts",
+      "target_case": "Canonical package authority cannot be rescued by a later stale legacy alias"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm authority rejects transient and non-shim layouts",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/install-authority-policy.test.ts",
+      "target_case": "Host-supplied npm authority rejects transient and non-shim layouts"
+    },
+    {
+      "source_file": "packages/cli/test/install-authority.test.ts",
+      "source_case": "Windows npm authority rejects npx cache segments case-insensitively",
+      "owner": "windows",
+      "target_file": "test/npm-prefix.test.ts",
+      "target_case": "Windows npm-prefix probing rejects npx cache segments case-insensitively"
+    },
+    {
+      "source_file": "packages/cli/test/host-config-root-agreement.test.ts",
+      "source_case": "Windows host roots use the user profile conventions of each host",
+      "owner": "windows",
+      "target_file": "test/../scripts/windows-installed-package-proof.mjs",
+      "target_case": "renamed-distribution"
+    },
+    {
+      "source_file": "packages/cli/test/private-config-write.test.ts",
+      "source_case": "Windows private writes rely on inherited ACLs and never call chmod",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/private-config-write.test.ts",
+      "target_case": "Private writes honor host mode applicability and never call chmod"
+    },
+    {
+      "source_file": "packages/cli/test/private-config-write.test.ts",
+      "source_case": "Windows private replacement retries only bounded sharing violations",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/private-config-write.test.ts",
+      "target_case": "Private replacement retries only interference selected by the injected policy"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "Windows policy uses the absolute user-local known folder and guards every prerelease source",
+      "owner": "windows",
+      "target_file": "test/private-state.test.ts",
+      "target_case": "Windows known folder policy guards every released and prerelease source"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "Windows policy accepts normalized drive and UNC LOCALAPPDATA authority",
+      "owner": "windows",
+      "target_file": "test/private-state.test.ts",
+      "target_case": "Windows accepts normalized drive and UNC authority, refuses device and relative authority"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "Windows policy rejects relative and device LOCALAPPDATA authorities",
+      "owner": "windows",
+      "target_file": "test/private-state.test.ts",
+      "target_case": "Windows accepts normalized drive and UNC authority, refuses device and relative authority"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "Windows containment ignores synthetic POSIX modes but still requires exact entry shape",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "target_case": "Host mode exemption retains exact private entry shape"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "native Windows state agreement ignores synthetic modes and remains readable",
+      "owner": "windows",
+      "target_file": "test/../scripts/windows-installed-package-proof.mjs",
+      "target_case": "private-state-and-pipe"
+    },
+    {
+      "source_file": "packages/cli/test/user-state-platform-policy.test.ts",
+      "source_case": "native Windows refuses root, marker, and child junctions without consuming their targets",
+      "owner": "windows",
+      "target_file": "test/../scripts/windows-installed-package-proof.mjs",
+      "target_case": "private-state-and-pipe"
+    },
+    {
+      "source_file": "packages/cli/test/command-text.test.ts",
+      "source_case": "the Windows renderer quotes what it can and refuses only what no shell can hold inertly",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows renderer quotes inert values and preserves apostrophes and internal backslashes"
+    },
+    {
+      "source_file": "packages/cli/test/command-text.test.ts",
+      "source_case": "the Windows renderer refuses what can CLOSE a double-quoted string, and permits apostrophes",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows renderer refuses quote terminators, expansion sigils, controls and percent expansion"
+    },
+    {
+      "source_file": "packages/cli/test/command-text.test.ts",
+      "source_case": "refusing the quote family removes the backslash-before-quote corner entirely",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows renderer refuses quote terminators, expansion sigils, controls and percent expansion"
+    },
+    {
+      "source_file": "packages/cli/test/command-text.test.ts",
+      "source_case": "a value Windows cannot render degrades to a QUOTED placeholder, never a bare one",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/runtime-policy.test.ts",
+      "target_case": "refused values use the shared quoted placeholder without losing command brands"
+    },
+    {
+      "source_file": "packages/cli/test/command-text.test.ts",
+      "source_case": "Windows refuses every percent sign, so no emitted token can be expanded by cmd.exe",
+      "owner": "windows",
+      "target_file": "test/quoting.test.ts",
+      "target_case": "Windows renderer refuses quote terminators, expansion sigils, controls and percent expansion"
+    },
+    {
+      "source_file": "packages/cli/test/shell-quoting-complexity.test.ts",
+      "source_case": "Windows token spelling preserves every short backslash placement",
+      "owner": "windows",
+      "target_file": "test/quoting-complexity.test.ts",
+      "target_case": "Windows token spelling preserves every short backslash placement"
+    },
+    {
+      "source_file": "packages/cli/test/shell-quoting-complexity.test.ts",
+      "source_case": "Windows token rendering completes for long internal and trailing backslash runs",
+      "owner": "windows",
+      "target_file": "test/quoting-complexity.test.ts",
+      "target_case": "Windows token rendering completes for long internal and trailing backslash runs"
+    },
+    {
+      "source_file": "packages/cli/test/hook-reconciliation.test.ts",
+      "source_case": "Windows durable authority composes one shell-safe command and argv-safe launch",
+      "owner": "windows",
+      "target_file": "scripts/windows-installed-package-proof.mjs",
+      "target_case": "renamed-distribution"
+    },
+    {
+      "source_file": "packages/cli/test/mcp-install-targets.test.ts",
+      "source_case": "Windows MCP targets use documented profile roots and AppData only for Claude Desktop",
+      "owner": "windows",
+      "target_file": "scripts/windows-installed-package-proof.mjs",
+      "target_case": "renamed-distribution"
+    },
+    {
+      "source_file": "packages/cli/test/mcp-install-targets.test.ts",
+      "source_case": "Windows Codex status uses the resolved cmd shim and distinguishes command failures",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/mcp-install-targets.test.ts",
+      "target_case": "host command status preserves absent and unreadable outcomes"
+    },
+    {
+      "source_file": "packages/cli/test/mcp-registration.test.ts",
+      "source_case": "Codex Windows mutation reuses one resolved cmd shim for inspection, mutation, and read-back",
+      "owner": "upstream",
+      "target_file": "packages/cli/test/mcp-registration.test.ts",
+      "target_case": "Codex mutation reuses one resolved executable for inspection, mutation, and read-back"
+    },
+    {
+      "source_file": "packages/cli/test/recipe-evolve-cli-integration.test.ts",
+      "source_case": "exact apply commands use the native host shell contract (Windows rows)",
+      "owner": "windows",
+      "target_file": "scripts/windows-installed-package-proof.mjs",
+      "target_case": "recipe-exact-apply"
+    }
+  ]
+}
