@@ -8,19 +8,30 @@ export function validateTopology(workflow) {
  const jobs={};
  const jobText=workflow.slice(workflow.indexOf('\njobs:\n')+7);
  for(const match of jobText.matchAll(/^  ([a-z][a-z-]+):\n([\s\S]*?)(?=^  [a-z][a-z-]+:\n|$(?![\s\S]))/gm)) jobs[match[1]]=match[2];
- assert.deepEqual(Object.keys(jobs),['inputs','consumer-build','native-installed']);
- assert.match(jobs.inputs,/repository: Holaxis-ai\/superbee\n\s+ref: \$\{\{ steps.pin.outputs.commit \}\}/);
- assert.match(jobs.inputs,/npm run --silent produce:inputs/);
+ assert.deepEqual(Object.keys(jobs),['inputs','consumer-build','native-installed','native-readme-build']);
+ assert.doesNotMatch(workflow,/repository:\s*Holaxis-ai\/superbee\s*\n|upstream-source|produce:inputs/);
+ assert.match(jobs.inputs,/npm run --silent registry:inputs/);
+ assert.match(workflow,/permissions:\n  contents: read/);
+ for(const job of Object.values(jobs)) assert.match(job,/timeout-minutes: [1-9][0-9]?\n/);
+ for(const match of workflow.matchAll(/uses: ([^\n]+)/g)) assert.match(match[1],/^actions\/[a-z-]+@[a-f0-9]{40}$/);
  assert.match(jobs['consumer-build'],/needs: inputs/);
  assert.doesNotMatch(jobs['consumer-build'],/repository:\s*Holaxis-ai\/superbee\s*\n|ref:\s*main/);
  assert.match(jobs['consumer-build'],/EXPECTED_INPUT_SHA256: \$\{\{ needs.inputs.outputs.record_sha256 \}\}/);
  assert.match(jobs['consumer-build'],/node scripts\/check-digest.mjs inputs\/inputs.json EXPECTED_INPUT_SHA256/);
  assert.match(jobs['consumer-build'],/npm run build -- --inputs inputs\/inputs.json/);
  assert.match(jobs['consumer-build'],/npm run verify:package -- --inputs inputs\/inputs.json/);
+ assert.match(jobs['consumer-build'],/node scripts\/prepare-native-proof.mjs/);
+ const readme=jobs['native-readme-build'];
+ assert.match(readme,/runs-on: windows-latest/);assert.match(readme,/node-version: 20/);
+ assert.match(readme,/node scripts\/extract-readme-build.mjs "\$env:RUNNER_TEMP\/readme-build.ps1"\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
+ assert.match(readme,/& "\$env:RUNNER_TEMP\/readme-build.ps1"\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
+ assert.match(readme,/node scripts\/prepare-native-proof.mjs/);assert.doesNotMatch(readme,/download-artifact|needs:/);
+ assert.match(readme,/EXPECTED_PROOF_SHA256: \$\{\{ steps.proof.outputs.proof_sha256 \}\}/);
  const native=jobs['native-installed'];
  assert.match(native,/needs: consumer-build/);assert.match(native,/runs-on: windows-latest/);
  assert.match(native,/node-version: 20/);assert.doesNotMatch(native,/actions\/checkout|npm run build|npm pack/);
  assert.match(native,/EXPECTED_PROOF_SHA256: \$\{\{ needs.consumer-build.outputs.proof_sha256 \}\}/);
+ for(const native of [jobs['native-installed'],readme]) {
  assert.match(native,/native input record digest changed/);assert.match(native,/native proof script digest changed/);assert.match(native,/native tarball digest changed/);
  assert.ok(native.indexOf('native tarball digest changed') < native.indexOf('npm install --global $tarball'));
  // Hashing the adapter script is not execution proof: require the command and its immediate failure guard.
@@ -30,6 +41,7 @@ export function validateTopology(workflow) {
  assert.match(native,/& \$cli --version/);assert.match(native,/existing first-party bin changed/);
  assert.match(native,/\$env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path \$prefix 'node_modules\/@superbee\/windows-cli\/dist\/superbee-windows.mjs'/);
  assert.match(native,/node out\/windows-installed-package-proof.mjs\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
+ }
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|^\s+if:|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
 }

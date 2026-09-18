@@ -14,11 +14,12 @@ create a replacement task store. Dispatched builders must not sync or push.
 The source of test migration is Superbee baseline
 `939a630027c4cc4d195e2dd92286efbc7b59455a`. Keep lock namespaces, private state markers, physical
 identity requirements, bounded retries, ownership refusal, and shared protocol boundaries intact.
-`upstream-input.json` must pin a pinned implementation SHA before package builds can proceed.
-The input producer is the only job allowed to check out upstream source. Consumer build and native
-installed proof use tarballs exclusively for Superbee dependencies.
+Exact CLI/core registry versions and integrity live in package.json/package-lock.json. No upstream
+source checkout participates. Registry inputs must pass signed provenance and installed-byte
+verification before package imports, typechecking or bundling. CI input and native proof records
+retain their cross-job digest boundaries; the README-native job proves its own build artifact.
 
-Run `npm test` during adapter work; after new packed inputs are available run the explicit build,
+Run `npm test` during adapter work; run the no-argument registry build,
 `npm run typecheck`, and `npm run verify:package`. Never describe local unit tests as native Windows
 proof. The native workflow is the authority for its exact source and artifact hashes. Review
 precedes QA. Parent coordinates integration, independent and cross-harness review, pushes, CI,

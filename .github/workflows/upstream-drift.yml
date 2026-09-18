@@ -24,24 +24,20 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22.14.0
-      - name: Resolve main once and temporarily repin this checkout
+      - name: Install verification tools
+        run: npm ci --ignore-scripts --force --no-audit --no-fund
+      - name: Resolve next once and temporarily repin this checkout
         id: resolve
-        run: node scripts/upstream-drift.mjs resolve
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: Holaxis-ai/superbee
-          ref: ${{ steps.resolve.outputs.candidate }}
-          path: upstream-source
-          persist-credentials: false
-      - name: Attempt exact candidate package production
+        run: npm exec -- node scripts/upstream-drift.mjs resolve
+      - name: Attempt verified candidate package acquisition
         id: produce
         run: |
-          npm run --silent produce:inputs upstream-source "$RUNNER_TEMP/inputs" > "$RUNNER_TEMP/producer.json"
-          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/producer.json')); fs.appendFileSync(process.env.GITHUB_OUTPUT,'record_sha256='+p.recordSha256+'\n');"
+          npm run --silent registry:inputs -- inputs
+          node scripts/upstream-drift.mjs transfer
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: drift-inputs
-          path: ${{ runner.temp }}/inputs
+          path: inputs
           if-no-files-found: error
   consumer-build:
     name: drift-consumer-build
@@ -63,13 +59,10 @@ jobs:
         env:
           EXPECTED_INPUT_SHA256: ${{ needs.inputs.outputs.record_sha256 }}
         run: node scripts/check-digest.mjs inputs/inputs.json EXPECTED_INPUT_SHA256
-      - name: Temporarily repin consumer to the resolved candidate
-        env:
-          CANDIDATE_COMMIT: ${{ needs.inputs.outputs.candidate }}
+      - name: Temporarily repin consumer from digest-bound manifest bytes
         run: node scripts/upstream-drift.mjs repin
       - name: Attempt candidate consumer build from tarballs only
         run: |
-          test ! -e upstream-source
           npm ci --ignore-scripts --force --no-audit --no-fund
           npm run build -- --inputs inputs/inputs.json
           npm run typecheck
@@ -89,8 +82,8 @@ jobs:
           node-version: 22.14.0
       - name: Report attempt and fail for drift or incomplete builds
         env:
-          OLD_COMMIT: ${{ needs.inputs.outputs.old }}
-          CANDIDATE_COMMIT: ${{ needs.inputs.outputs.candidate }}
+          OLD_PAIR: ${{ needs.inputs.outputs.old }}
+          CANDIDATE_PAIR: ${{ needs.inputs.outputs.candidate }}
           INPUTS_RESULT: ${{ needs.inputs.result }}
           CONSUMER_RESULT: ${{ needs.consumer-build.result }}
         run: node scripts/upstream-drift.mjs report

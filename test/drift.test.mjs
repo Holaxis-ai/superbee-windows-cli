@@ -4,90 +4,59 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { resolveCandidate, assessDrift, validateDriftTopology } from '../scripts/upstream-drift.mjs';
-const old='a'.repeat(40), candidate='b'.repeat(40);
-const pin={repository:'Holaxis-ai/superbee',commit:old};
-test('resolver freezes exactly one main SHA and stale pin does not prevent an attempt',()=>{
- let calls=0;
- assert.equal(resolveCandidate(pin,(file,args,options)=>{
-  calls++;
-  assert.equal(file,'git');
-  assert.deepEqual(args,['ls-remote','--exit-code','https://github.com/Holaxis-ai/superbee.git','refs/heads/main']);
-  assert.ok(options.timeout>0);
-  return `${candidate}\trefs/heads/main\n`;
- }),candidate);
- assert.equal(calls,1);
+import { resolveCandidate, assessDrift, validateDriftTopology, transferCandidate, restoreCandidate, repinCandidate } from '../scripts/upstream-drift.mjs';
+import { readLockedPackages, root } from '../scripts/registry-inputs.mjs';
+const old=(await readLockedPackages()).packages,candidate=structuredClone(old);candidate[0].version='1.2.3';candidate[0].resolved='https://registry.npmjs.org/@superbee/cli/-/cli-1.2.3.tgz';
+test('resolver freezes each next tag once without choosing a different matching pair',async()=>{
+ let calls=0;const pair=await resolveCandidate(async url=>{const row=candidate[calls++];assert.equal(url,`https://registry.npmjs.org/${row.name}/next`);return JSON.stringify({name:row.name,version:row.version,dist:{tarball:row.resolved,integrity:row.integrity}});});assert.equal(calls,2);assert.deepEqual(pair,candidate);
+ for(const data of [{}, {name:'@superbee/cli',version:'next'}, {name:'wrong',version:'1.2.3'}])await assert.rejects(resolveCandidate(async()=>JSON.stringify(data)));
+ await assert.rejects(resolveCandidate(async()=>{throw Error('offline');}),/offline/);
 });
-test('resolver rejects malformed pins, ambiguous refs, invalid SHAs and network failures',()=>{
- for(const bad of [{...pin,commit:'main'},{...pin,repository:'other/repo'}])
-  assert.throws(()=>resolveCandidate(bad,()=>{throw Error('must not resolve');}));
- for(const output of ['',`${candidate}\trefs/heads/other`, `main\trefs/heads/main`,`${candidate}\trefs/heads/main\n${old}\trefs/heads/main`])
-  assert.throws(()=>resolveCandidate(pin,()=>output));
- assert.throws(()=>resolveCandidate(pin,()=>{throw Error('network unavailable');}),/network unavailable/);
+test('only identical pins with both successful build stages are green; integrity drift stays red',()=>{
+ assert.equal(assessDrift(old,old,'success','success').ok,true);assert.equal(assessDrift(old,candidate,'success','success').ok,false);
+ const changed=structuredClone(old);changed[0].integrity='sha512-'+Buffer.alloc(64).toString('base64');assert.equal(assessDrift(old,changed,'success','success').ok,false);
+ for(const status of ['failure','cancelled','skipped','',undefined]){assert.equal(assessDrift(old,old,status,'success').ok,false);assert.equal(assessDrift(old,old,'success',status).ok,false);}
+ assert.equal(assessDrift(null,old,'success','success').ok,false);
 });
-test('only a current pin with both successful build stages is green',()=>{
- assert.equal(assessDrift(old,old,'success','success').ok,true);
- assert.equal(assessDrift(old,candidate,'success','success').ok,false);
- for(const stage of ['failure','cancelled','skipped','',undefined]) {
-  assert.equal(assessDrift(old,old,stage,'success').ok,false);
-  assert.equal(assessDrift(old,old,'success',stage).ok,false);
+test('candidate manifests transfer with hashes and changed lock bytes refuse repin',async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'candidate-'));try{
+ const out=path.join(dir,'inputs'),dest=path.join(dir,'dest');await mkdir(out);await mkdir(dest);
+ await writeFile(path.join(out,'inputs.json'),JSON.stringify(await readLockedPackages()));await transferCandidate(root,out);await restoreCandidate(out,dest);
+ assert.equal(await readFile(path.join(dest,'package-lock.json'),'utf8'),await readFile(path.join(root,'package-lock.json'),'utf8'));
+ await writeFile(path.join(out,'package-lock.json'),'changed');await assert.rejects(restoreCandidate(out,dest),/bytes changed/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('report propagates red/green process exits and safe unavailable resolution',async()=>{
+ for(const [pair,producer,consumer,status] of [[old,'success','success',0],[candidate,'success','success',1],[null,'failure','skipped',1],[old,'success','cancelled',1]]){
+ const result=spawnSync(process.execPath,['scripts/upstream-drift.mjs','report'],{encoding:'utf8',env:{...process.env,OLD_PAIR:JSON.stringify(old),CANDIDATE_PAIR:JSON.stringify(pair),INPUTS_RESULT:producer,CONSUMER_RESULT:consumer}});assert.equal(result.status,status,result.stderr);if(!pair)assert.match(result.stdout,/unavailable/);
  }
- assert.equal(assessDrift('',old,'success','success').ok,false);
-});
-test('report process writes summary and propagates red/green exits',async()=>{
- const dir=await mkdtemp(path.join(tmpdir(),'drift-test-'));
- try {
-  for(const [label,head,inputs,consumer,status] of [
-   ['current',old,'success','success',0],['stale',candidate,'success','success',1],
-   ['producer failure',candidate,'failure','skipped',1],['consumer failure',old,'success','failure',1],
-   ['missing resolution','','failure','skipped',1],['cancelled',old,'success','cancelled',1],
-  ]) {
-   const summary=path.join(dir,label+'.md');
-   const result=spawnSync(process.execPath,['scripts/upstream-drift.mjs','report'],{encoding:'utf8',env:{...process.env,OLD_COMMIT:old,CANDIDATE_COMMIT:head,INPUTS_RESULT:inputs,CONSUMER_RESULT:consumer,GITHUB_STEP_SUMMARY:summary}});
-   assert.equal(result.status,status,`${label}: ${result.stderr}`);
-   const text=await readFile(summary,'utf8');
-   assert.ok(text.includes(old));
-   if(head) assert.ok(text.includes(head));
-   assert.ok(text.includes(inputs));assert.ok(text.includes(consumer));
-  }
- } finally {await rm(dir,{recursive:true,force:true});}
-});
-test('temporary repin CLI updates only its checkout and rejects mutable candidates',async()=>{
- const dir=await mkdtemp(path.join(tmpdir(),'drift-repin-'));
- try {
-  await mkdir(path.join(dir,'scripts'));
-  for(const name of ['upstream-drift.mjs','inputs.mjs'])
-   await writeFile(path.join(dir,'scripts',name),await readFile(new URL(`../scripts/${name}`,import.meta.url)));
-  const pinFile=path.join(dir,'upstream-input.json');
-  const original=JSON.stringify(pin)+'\n';
-  for(const head of [candidate,'main','',`${candidate}\n`,`${candidate}\nextra`]) {
-   await writeFile(pinFile,original);
-   const result=spawnSync(process.execPath,[path.join(dir,'scripts/upstream-drift.mjs'),'repin'],{encoding:'utf8',env:{...process.env,CANDIDATE_COMMIT:head}});
-   assert.equal(result.status,head===candidate?0:1,result.stderr);
-   const actual=await readFile(pinFile,'utf8');
-   if(head===candidate) assert.deepEqual(JSON.parse(actual),{...pin,commit:candidate});
-   else assert.equal(actual,original,'failed repin must preserve original bytes');
-  }
- } finally {await rm(dir,{recursive:true,force:true});}
 });
 const workflow=await readFile(new URL('../.github/workflows/upstream-drift.yml',import.meta.url),'utf8');
-test('drift workflow separates temporary producer/consumer builds and always reports',()=>validateDriftTopology(workflow));
-test('adversarial workflow mutations fail closed',()=>{
- for(const [from,to] of [
-  ['contents: read','contents: write'],['name: drift-inputs','name: inputs'],['persist-credentials: false','persist-credentials: true'],
-  ['ref: ${{ steps.resolve.outputs.candidate }}','ref: main'],
-  ['npm run --silent produce:inputs','echo skipped-producer'],
-  ['npm run build -- --inputs inputs/inputs.json','echo skipped-build'],
-  ['node scripts/upstream-drift.mjs report','echo skipped-report'],
-  ['if: always()','if: success()'],['needs: [inputs, consumer-build]','needs: inputs'],
-  ['needs: inputs','needs: inputs\n    if: false'],
-  ['node scripts/check-digest.mjs inputs/inputs.json EXPECTED_INPUT_SHA256','echo unchecked'],
-  ['node scripts/upstream-drift.mjs repin','echo skipped-repin'],
-  ['timeout-minutes: 20','timeout-minutes: 0'],
- ]) {
-  assert.ok(workflow.includes(from),from);
-  assert.throws(()=>validateDriftTopology(workflow.replace(from,to)),from);
- }
- for(const extra of ['\n# continue-on-error: true','\n# git push','\n# gh issue create'])
-  assert.throws(()=>validateDriftTopology(workflow+extra));
+test('drift workflow freezes candidates and always reports after separate build attempt',()=>validateDriftTopology(workflow));
+test('drift workflow bypass mutations fail closed',()=>{
+ for(const [from,to] of [['contents: read','contents: write'],['name: drift-inputs','name: inputs'],['persist-credentials: false','persist-credentials: true'],['npm exec -- node scripts/upstream-drift.mjs resolve','echo skipped-resolve'],['npm run --silent registry:inputs','echo skipped-producer'],['node scripts/upstream-drift.mjs transfer','echo skipped-transfer'],['npm run build -- --inputs inputs/inputs.json','echo skipped-build'],['node scripts/upstream-drift.mjs report','echo skipped-report'],['if: always()','if: success()'],['needs: [inputs, consumer-build]','needs: inputs'],['needs: inputs','needs: inputs\n    if: false'],['node scripts/check-digest.mjs inputs/inputs.json EXPECTED_INPUT_SHA256','echo unchecked'],['node scripts/upstream-drift.mjs repin','echo skipped-repin'],['timeout-minutes: 20','timeout-minutes: 0']]){assert.ok(workflow.includes(from),from);assert.throws(()=>validateDriftTopology(workflow.replace(from,to)),from);}
+ for(const extra of ['\n# continue-on-error: true','\n# git push','\n# gh issue create'])assert.throws(()=>validateDriftTopology(workflow+extra));
+});
+
+test('unresolved report runs without installed dependencies or registry network',async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'drift-report-bootstrap-'));try{
+ await mkdir(path.join(dir,'scripts'));for(const name of ['upstream-drift.mjs','registry-lock.mjs'])await writeFile(path.join(dir,'scripts',name),await readFile(new URL('../scripts/'+name,import.meta.url)));
+ const result=spawnSync(process.execPath,[path.join(dir,'scripts/upstream-drift.mjs'),'report'],{encoding:'utf8',env:{...process.env,OLD_PAIR:'',CANDIDATE_PAIR:'',INPUTS_RESULT:'failure',CONSUMER_RESULT:'skipped'}});
+ assert.equal(result.status,1,result.stderr);assert.match(result.stdout,/Resolution missing or invalid/);assert.match(result.stdout,/unavailable/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('integrity-only repin regenerates candidate lock rows from exact frozen versions',async()=>{
+ const {readFileSync,writeFileSync}=await import('node:fs');
+ const dir=await mkdtemp(path.join(tmpdir(),'drift-integrity-'));try{
+ const manifest=await readFile(path.join(root,'package.json')),original=JSON.parse(await readFile(path.join(root,'package-lock.json'),'utf8'));
+ await writeFile(path.join(dir,'package.json'),manifest);await writeFile(path.join(dir,'package-lock.json'),JSON.stringify(original));
+ const frozen=structuredClone(old);frozen[0].integrity='sha512-'+Buffer.alloc(64).toString('base64');let calls=0;
+ await repinCandidate(frozen,{directory:dir,npm:'npm-cli.js',run:(exe,args,options)=>{
+ calls++;assert.equal(exe,process.execPath);assert.ok(args.includes('--prefer-online'));assert.ok(args.includes('--ignore-scripts'));assert.ok(!args.includes('next'));
+ const pending=JSON.parse(readFileSync(path.join(dir,'package-lock.json'))),pkg=JSON.parse(readFileSync(path.join(dir,'package.json')));
+ for(const row of frozen){assert.equal(pending.packages['node_modules/'+row.name],undefined);assert.equal(pkg.devDependencies[row.name],row.version);pending.packages['node_modules/'+row.name]={...original.packages['node_modules/'+row.name],version:row.version,resolved:row.resolved,integrity:row.integrity};pending.packages[''].devDependencies[row.name]=row.version;}
+ writeFileSync(path.join(dir,'package-lock.json'),JSON.stringify(pending));
+ }});assert.equal(calls,1);
+ }finally{await rm(dir,{recursive:true,force:true});}
 });

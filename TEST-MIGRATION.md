@@ -6,8 +6,9 @@ claim that every upstream workspace suite runs here. Native scenarios require th
 
 `test/migration-cases.json` records all 35 named CLI cases and their exact destination test or
 retained upstream protocol test. The ledger test checks local destination references; upstream
-rows are checked for path shape only. Their test names must be checked against the pinned upstream
-source when updating the input pin. The two original
+rows are checked for path shape only. Historical source case names remain baseline evidence. When updating registry versions, review
+release/source evidence and retained upstream protocol ownership; no upstream checkout is a build
+prerequisite. The two original
 linear-time backslash probes live in `test/quoting-complexity.test.ts`; three npm-prefix tests retain
 their original case names in `test/npm-prefix.test.ts`.
 
@@ -33,7 +34,7 @@ their original case names in `test/npm-prefix.test.ts`.
 | board foreign-worktree provision/refusal transaction | Shared ownership proof remains core/board; destination local remote sync covers installed board composition, not all upstream Git transaction tests |
 | scripts verify-npm-package Windows quoting, LOCALAPPDATA expectation and `.cmd` resolver | quoting/private-state/host tests above; installed workflow proves exact prefix `.cmd`, read-back and first-party bin preservation |
 | scripts windows-installed-package-proof: all five native lifecycle scenarios | `scripts/windows-installed-package-proof.mjs`: catalog, local remote sync, UI URL, managed document/Chrome/worker, MCP lifecycle preserved and adapted to installed renamed entry |
-| scripts workflow-ci-topology Windows proof digest and scenario bypass mutations | `test/topology.test.mjs`, `scripts/ci-contract.mjs`, `test/native-proof.json`: byte digest, mandatory calls, producer/input/hash/install boundaries and red probes |
+| scripts workflow-ci-topology Windows proof digest and scenario bypass mutations | `test/topology.test.mjs`, `scripts/ci-contract.mjs`, `test/native-proof.json`: byte digest, mandatory calls, registry identity, README extraction, input/hash/install boundaries and red probes |
 | windows-support-probe historical monorepo inventory | Retired: this repo proves its adapters and installed workflows, not every upstream workspace. Native prerequisites are hard failures and unit skip counts remain visible |
 
 Independent validation still needs the actual candidate CLI/core artifacts and native workflow.

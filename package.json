@@ -6,7 +6,7 @@
   "description": "Experimental independent Windows adapters and executable for Superbee.",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20"
+    "node": "^20.17.0 || >=22.9.0"
   },
   "os": [
     "win32"
@@ -33,11 +33,15 @@
     "verify:package": "node scripts/verify-package.mjs",
     "verify:native": "node scripts/windows-installed-package-proof.mjs",
     "prepublishOnly": "node -e \"console.error('This experimental Windows distribution is private staging; publication is not configured'); process.exit(1)\"",
-    "produce:inputs": "node scripts/produce-inputs.mjs"
+    "registry:inputs": "node scripts/registry-inputs.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.0",
     "esbuild": "0.25.12",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@superbee/cli": "0.1.0-pre.1",
+    "@superbee/core": "0.2.0-pre.6",
+    "sigstore": "4.1.1",
+    "tar": "7.5.22"
   }
 }

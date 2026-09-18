@@ -6,9 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyInputs, sha256 } from './inputs.mjs';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const [flag,recordPath]=process.argv.slice(2);
-assert.equal(flag,'--inputs');assert.ok(recordPath,'explicit input record is required');
-const inputs=await verifyInputs(path.resolve(recordPath));
+const args=process.argv.slice(2);
+assert.ok(args.length===0 || (args.length===2 && args[0]==='--inputs'));
+const buildReceipt=JSON.parse(await readFile(path.join(root,'out/build-inputs.json'),'utf8'));
+const inputs=await verifyInputs(args.length ? path.resolve(args[1]) : buildReceipt.inputs.recordPath);
+assert.deepEqual(inputs,buildReceipt.inputs,'package proof inputs differ from successful build');
 const npm=process.env.npm_execpath;assert.ok(npm,'run through npm');
 const runNpm=(args,cwd)=>execFileSync(process.execPath,[npm,...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024});
 const scratch=await mkdtemp(path.join(tmpdir(),'superbee-windows-consumer-'));
@@ -39,7 +41,7 @@ try {
  const inert=execFileSync(process.execPath,['inert.mjs'],{cwd:scratch,encoding:'utf8',stdio:['ignore','pipe','pipe']});assert.equal(inert,'');
  const filesystemBytes=await readFile(path.join(installed,'dist/filesystem.mjs'),'utf8');
  assert.doesNotMatch(filesystemBytes,/@superbee\/cli|createCliRuntime|process\.argv|runManagedUiWorker/);
- const proof={tarball:receipt.filename,sha256:sha256(await readFile(tarball)),upstreamCommit:inputs.commit,scenarios:['file-allowlist','distinct-bin','no-runtime-dependencies','packed-core-type-contract','filesystem-import-inert']};
+ const proof={tarball:receipt.filename,sha256:sha256(await readFile(tarball)),cliSource:inputs.provenance,scenarios:['file-allowlist','distinct-bin','no-runtime-dependencies','packed-core-type-contract','filesystem-import-inert']};
  await writeFile(path.join(root,'out/package-proof.json'),JSON.stringify(proof,null,2)+'\n');
  process.stdout.write(JSON.stringify(proof)+'\n');
 } finally {await rm(scratch,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
