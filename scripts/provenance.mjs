@@ -20,9 +20,14 @@ export function validateStatement(bundle, version, digest) {
  const commit=sources[0].digest?.gitCommit;assert.match(commit ?? '',fullSha);
  return {repository,workflow:workflowPath,ref,commit,subjectSha256:digest};
 }
+export function certificatePolicy(version) {
+ const identity=`${repository}/${workflowPath}@refs/tags/cli/v${version}`;
+ // Sigstore treats SAN strings as regexes; escape literals and reject even trailing newlines.
+ const exactIdentity='^'+identity.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\s\\S])';
+ return {certificateIssuer:'https://token.actions.githubusercontent.com',certificateIdentityURI:exactIdentity};
+}
 export async function verifyProvenance(bundle, version, digest, cacheDirectory) {
- const verifier=await createVerifier({certificateIssuer:'https://token.actions.githubusercontent.com',
-  certificateIdentityURI:`${repository}/${workflowPath}@refs/tags/cli/v${version}`,
+ const verifier=await createVerifier({...certificatePolicy(version),
   ctLogThreshold:1,tlogThreshold:1,tufCachePath:cacheDirectory});
  verifier.verify(bundle);
  return validateStatement(bundle,version,digest);
