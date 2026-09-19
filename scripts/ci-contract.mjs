@@ -25,6 +25,7 @@ function nativeRuns(job) {
   assert.ok(script.split('\n').filter(line=>line===indent+proofFilesLoop).length<=1,'native script has one proof-files loop');
   runs.push(script);
  }
+ assert.equal(runs.join('').split('\n').filter(line=>line===indent+proofFilesLoop).length,1,'native job must contain only its digest proof-files loop');
  return runs;
 }
 function requireExecution(job, runs, command) {
@@ -94,6 +95,7 @@ export function validateTopology(workflow) {
  assert.match(native,/existing first-party bin changed/);
  assert.match(native,/\$env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path \$prefix 'node_modules\/@superbee\/windows-cli\/dist\/superbee-windows.mjs'/);
  }
- assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|^\s+if:|exit 0/m);
+ assert.doesNotMatch(workflow,/^\s*(?:- +)?(?:if|"if"|'if')\s*:/m,'native CI cannot contain YAML conditionals');
+ assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
 }

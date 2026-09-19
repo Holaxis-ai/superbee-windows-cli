@@ -27,9 +27,9 @@ function jobBlock(source, name) {
 function mutateJob(name, from, to) {
  const original=jobBlock(workflow,name);
  assert.equal(original.split(from).length-1,1,`${name}: mutation target must occur exactly once`);
- const changed=original.replace(from,to);
+ const changed=original.replace(from,()=>to);
  assert.notEqual(changed,original,`${name}: mutation must change its job`);
- const mutated=workflow.replace(original,changed);
+ const mutated=workflow.replace(original,()=>changed);
  for(const other of ['inputs','consumer-build','native-installed','native-readme-build'].filter(x=>x!==name))
   assert.equal(jobBlock(mutated,other),jobBlock(workflow,other),`${other} must remain unchanged`);
  return mutated;
@@ -69,7 +69,7 @@ for(const job of ['native-installed','native-readme-build']) {
    ['disabled comparison',statement.replace(/if \(.*\) \{ throw/, 'if ($false) { throw')],
    ['non-terminating',statement.replace('throw ', 'Write-Output ')],
   ]) test(`${job}: ${message}: rejects ${name} statement`,()=>{
-   assert.throws(()=>validateTopology(mutateJob(job,statement,replacement)));
+   assert.throws(()=>validateTopology(mutateJob(job,statement,replacement)),/native record, helper and tarball digest checks/);
   });
  }
  test(`${job}: rejects changing its renamed executable`,()=>{
@@ -81,13 +81,13 @@ for(const job of ['native-installed','native-readme-build']) {
    const install=block.split('\n').find(line=>line.startsWith(destination))+'\n'+guard;
    assert.equal(block.split(install).length-1,1,'install destination must be unique');
    assert.equal(block.split(execution('node out/check-native-inputs.mjs')).length-1,1,'validation must be unique');
-   const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(install,install+execution('node out/check-native-inputs.mjs'));
-   assert.throws(()=>validateTopology(mutateJob(job,block,changed)));
+   const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(install,()=>install+execution('node out/check-native-inputs.mjs'));
+   assert.throws(()=>validateTopology(mutateJob(job,block,changed)),/native digest checks and validation must precede/);
   });
  test(`${job}: rejects validation before digest checks`,()=>{
   const block=jobBlock(workflow,job);
-  const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(indent+'$bytes =',execution('node out/check-native-inputs.mjs')+indent+'$bytes =');
-  assert.throws(()=>validateTopology(mutateJob(job,block,changed)));
+  const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(indent+'$bytes =',()=>execution('node out/check-native-inputs.mjs')+indent+'$bytes =');
+  assert.throws(()=>validateTopology(mutateJob(job,block,changed)),/native digest checks and validation must precede/);
  });
 }
 for(const [name,anchor] of [['before README execution','& "$env:RUNNER_TEMP/readme-build.ps1"'],['after artifact preparation','node scripts/prepare-native-proof.mjs']])
@@ -95,8 +95,25 @@ for(const [name,anchor] of [['before README execution','& "$env:RUNNER_TEMP/read
   const block=jobBlock(workflow,'native-readme-build');
   const target=execution(anchor);
   assert.equal(block.split(target).length-1,1);
-  const moved=block.replace(execution('npm test'),'').replace(target,name.startsWith('before')?execution('npm test')+target:target+execution('npm test'));
-  assert.throws(()=>validateTopology(mutateJob('native-readme-build',block,moved)));
+  const moved=block.replace(execution('npm test'),'').replace(target,()=>name.startsWith('before')?execution('npm test')+target:target+execution('npm test'));
+  assert.throws(()=>validateTopology(mutateJob('native-readme-build',block,moved)),/README execution and tests must precede/);
+ });
+for(const [job,step] of [
+ ['native-installed','Install and drive the exact Windows artifact'],
+ ['native-readme-build','Execute the README build block verbatim'],
+ ['native-readme-build',"Bind this job's own artifact and native proof"],
+ ['native-readme-build','Install and drive the exact Windows artifact'],
+]) for(const key of ['if', '"if"', "'if'"]) for(const first of [true,false])
+ test(`${job}: rejects ${key} conditional ${first?'first':'later'} key on ${step}`,()=>{
+  const original=`      - name: ${step}\n`;
+  const replacement=first?`      - ${key}: false\n        name: ${step}\n`:`${original}        ${key}: false\n`;
+  assert.throws(()=>validateTopology(mutateJob(job,original,replacement)),/YAML conditionals/);
+ });
+for(const command of ['npm test','node scripts/extract-readme-build.mjs "$env:RUNNER_TEMP/readme-build.ps1"','& "$env:RUNNER_TEMP/readme-build.ps1"','node scripts/prepare-native-proof.mjs'])
+ test(`native-readme-build: rejects zero-iteration proof loop around ${command}`,()=>{
+  const original=execution(command);
+  const replacement=indent+'foreach ($file in $record.files.psobject.Properties) {\n'+original+indent+'}\n';
+  assert.throws(()=>validateTopology(mutateJob('native-readme-build',original,replacement)),/proof-files loop/);
  });
 test('reviewed native lifecycle bytes and required scenarios cannot silently disappear',()=>{
  verifyNativeProofDigest(proof,contract.sha256);
