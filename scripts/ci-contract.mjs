@@ -4,6 +4,51 @@ export function verifyNativeProofDigest(bytes, expected) {
  assert.match(expected,/^[a-f0-9]{64}$/);
  assert.equal(sha256(bytes),expected,'native proof bytes differ from reviewed digest');
 }
+const indent='          ';
+const exitGuard='if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }';
+const proofFilesLoop='foreach ($file in $record.files.psobject.Properties) {';
+// This contract deliberately supports the repository's literal pwsh run blocks,
+// not arbitrary YAML or PowerShell. A structural change needs contract review.
+function nativeRuns(job) {
+ const runs=[];
+ for(const step of job.split(/^      - /m).slice(1)) {
+  const match=step.match(/^        run: \|\n((?:          [^\n]*\n|\n)+)/m);
+  if(!match) continue;
+  assert.match(step,/^        shell: pwsh$/m,'native run blocks must use pwsh');
+  const script=match[1];
+  for(const line of script.split('\n')) {
+   // Required lines cannot hide inside multiline conditionals, script blocks,
+   // block comments or here strings, even when their indentation is unchanged.
+   if(line.includes('{') && !line.includes('}')) assert.equal(line,indent+proofFilesLoop,'unexpected native control block');
+   assert.doesNotMatch(line,/<#|#>|@['"]|['"]@\s*$/,'native scripts must remain literal commands');
+  }
+  assert.ok(script.split('\n').filter(line=>line===indent+proofFilesLoop).length<=1,'native script has one proof-files loop');
+  runs.push(script);
+ }
+ return runs;
+}
+function requireExecution(job, runs, command) {
+ const block=indent+command+'\n'+indent+exitGuard+'\n';
+ assert.equal(runs.filter(run=>('\n'+run).includes('\n'+block)).length,1,`${command} must execute at run scope with adjacent nonzero-exit propagation`);
+ assert.equal(job.split(block).length-1,1,`${command} must have one execution`);
+ return job.indexOf(block);
+}
+function requireDigestChecks(job, runs) {
+ const block=[
+  "$bytes = [System.IO.File]::ReadAllBytes((Join-Path $pwd 'out/native-inputs.json'))",
+  '$digest = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()',
+  "if ($digest -ne $env:EXPECTED_PROOF_SHA256) { throw 'native input record digest changed' }",
+  '$record = Get-Content -Raw out/native-inputs.json | ConvertFrom-Json',
+  proofFilesLoop,
+  "  if ($file.Name -notmatch '^[a-z0-9][a-z0-9.-]+$') { throw 'invalid proof filename' }",
+  "  if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $file.Name))).Hash.ToLowerInvariant() -ne $file.Value) { throw 'native proof script digest changed' }",
+  '}',
+  "if ($record.tarball -notmatch '^[a-z0-9][a-z0-9.-]+\\.tgz$') { throw 'invalid tarball filename' }",
+  "if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $record.tarball))).Hash.ToLowerInvariant() -ne $record.sha256) { throw 'native tarball digest changed' }",
+ ].map(line=>indent+line+'\n').join('');
+ assert.equal(runs.filter(run=>('\n'+run).includes('\n'+block)).length,1,'native record, helper and tarball digest checks must execute and throw on mismatch');
+ return job.indexOf(block)+block.length;
+}
 export function validateTopology(workflow) {
  const jobs={};
  const jobText=workflow.slice(workflow.indexOf('\njobs:\n')+7);
@@ -23,24 +68,31 @@ export function validateTopology(workflow) {
  assert.match(jobs['consumer-build'],/node scripts\/prepare-native-proof.mjs/);
  const readme=jobs['native-readme-build'];
  assert.match(readme,/runs-on: windows-latest/);assert.match(readme,/node-version: 20/);
- assert.match(readme,/node scripts\/extract-readme-build.mjs "\$env:RUNNER_TEMP\/readme-build.ps1"\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
- assert.match(readme,/& "\$env:RUNNER_TEMP\/readme-build.ps1"\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
- assert.match(readme,/node scripts\/prepare-native-proof.mjs/);assert.doesNotMatch(readme,/download-artifact|needs:/);
+ const readmeRuns=nativeRuns(readme);
+ const extract=requireExecution(readme,readmeRuns,'node scripts/extract-readme-build.mjs "$env:RUNNER_TEMP/readme-build.ps1"');
+ const build=requireExecution(readme,readmeRuns,'& "$env:RUNNER_TEMP/readme-build.ps1"');
+ const tests=requireExecution(readme,readmeRuns,'npm test');
+ const prepare=requireExecution(readme,readmeRuns,'node scripts/prepare-native-proof.mjs');
+ assert.ok(extract < build && build < tests && tests < prepare,'README execution and tests must precede own-artifact preparation');
+ assert.doesNotMatch(readme,/download-artifact|needs:/);
  assert.match(readme,/EXPECTED_PROOF_SHA256: \$\{\{ steps.proof.outputs.proof_sha256 \}\}/);
  const native=jobs['native-installed'];
  assert.match(native,/needs: consumer-build/);assert.match(native,/runs-on: windows-latest/);
  assert.match(native,/node-version: 20/);assert.doesNotMatch(native,/actions\/checkout|npm run build|npm pack/);
  assert.match(native,/EXPECTED_PROOF_SHA256: \$\{\{ needs.consumer-build.outputs.proof_sha256 \}\}/);
  for(const native of [jobs['native-installed'],readme]) {
- assert.match(native,/native input record digest changed/);assert.match(native,/native proof script digest changed/);assert.match(native,/native tarball digest changed/);
- assert.ok(native.indexOf('native tarball digest changed') < native.indexOf('npm install --global $tarball'));
- // Hashing the adapter script is not execution proof: require the command and its immediate failure guard.
- assert.match(native,/^([ \t]+)node native-adapters\.mjs[ \t]*\r?\n\1if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}[ \t]*$/m,
-  'native adapters must execute with adjacent nonzero-exit propagation');
- assert.match(native,/\$cli = Join-Path \$prefix 'superbee-windows.cmd'/);
- assert.match(native,/& \$cli --version/);assert.match(native,/existing first-party bin changed/);
+ const runs=nativeRuns(native);
+ const digestEnd=requireDigestChecks(native,runs);
+ const validation=requireExecution(native,runs,'node out/check-native-inputs.mjs');
+ const firstInstall=native.search(/^          npm install /m);
+ const adapters=requireExecution(native,runs,'node native-adapters.mjs');
+ const cli=requireExecution(native,runs,'& $cli --version');
+ const proof=requireExecution(native,runs,'node out/windows-installed-package-proof.mjs');
+ assert.ok(firstInstall>=0 && digestEnd<=validation && validation<firstInstall && firstInstall<adapters && adapters<cli && cli<proof,
+  'native digest checks and validation must precede the first artifact install and execution');
+ assert.match(native,/^          \$cli = Join-Path \$prefix 'superbee-windows.cmd'$/m);
+ assert.match(native,/existing first-party bin changed/);
  assert.match(native,/\$env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path \$prefix 'node_modules\/@superbee\/windows-cli\/dist\/superbee-windows.mjs'/);
- assert.match(native,/node out\/windows-installed-package-proof.mjs\n\s+if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/);
  }
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|^\s+if:|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
