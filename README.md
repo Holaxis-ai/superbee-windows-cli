@@ -19,58 +19,56 @@ install or replace `superbee`. Existing Superbee integration receipts are foreig
 distribution; they are not adopted automatically. Automatic update checks are disabled. Existing
 bundle formats and private-state namespace names remain unchanged.
 
-## Planned user build (pending @superbee/cli publish)
+## Build on Windows
 
-These steps are planned, not available yet. They depend on publication of `@superbee/cli` and
-completion of the registry-pinned build work (W2 part 2). After that work, a clone of this repository
-on Windows with Node.js 20 or newer will install exact registry dependencies and build locally:
+Install git, npm and Node.js 20.17 or newer within Node 20, or Node.js 22.9 or newer
+(`^20.17.0 || >=22.9.0`). Clone this repository and open PowerShell in its root directory.
+The build needs network access to the public npm registry, GitHub attestation API and Sigstore
+trust service. It needs no upstream checkout, GitHub CLI or global verification tool.
 
-```sh
-# Planned only; pending @superbee/cli publish and W2 part 2.
+Run this block exactly. Each guard stops PowerShell immediately if a native command fails.
+CI extracts this block from the README and executes it on Windows.
+
+<!-- windows-build:start -->
+```powershell
 npm ci
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 npm run build
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+npm run verify:package
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
+<!-- windows-build:end -->
+
+The build pins `@superbee/cli@0.1.0-pre.1` and `@superbee/core@0.2.0-pre.6` in the npm lockfile.
+Before executing CLI resources, typechecking or bundling, it checks tarball integrity, verifies
+the CLI release's Sigstore attestation and workflow/source identity, compares every installed
+package file against the verified tarballs, and checks the embedded v2 core identity. Missing
+attestation, changed installed bytes, mismatched core or unavailable trust verification fails
+the build and removes prior output receipts.
+
+After the build, install the locally packed executable from this repository root:
+
+```powershell
+npm install --global ./out/superbee-windows-cli-0.0.0.tgz --ignore-scripts
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+superbee-windows --version
 ```
 
-Today, `npm run build` requires the explicit package inputs described below. Running the planned
-commands now does not produce a usable build. No package publication or release download is planned
-for this Windows executable.
+This tarball is your local development output, not a distributed release. The executable reports
+version `0.0.0` and records the local source identity. Run `superbee-windows --help` for commands.
 
-## Current maintainer build from explicit package inputs
+For development on macOS or Linux, use `npm ci --force`, then `npm test`, `npm run build`,
+`npm run typecheck` and `npm run verify:package`. `--force` permits installing development tools;
+it does not expand native Windows support. The build consumes public package exports, obtains
+resources from `@superbee/cli/resources`, and bundles a CLI with zero runtime dependencies.
+Generated tarballs, resources and build outputs are ignored.
 
-Install Node.js 20 or newer. The pinned toolchain and adapter tests can run on macOS or Linux;
-native runtime tests require Windows.
-
-```sh
-npm ci --ignore-scripts --force
-npm test
-npm run build -- --inputs /absolute/path/to/inputs.json
-npm run typecheck
-npm run verify:package -- --inputs /absolute/path/to/inputs.json
-```
-
-`--force` permits installing this Windows-only package's development tools on another host. It does
-not make the Windows executable support that host. The input record must name the exact reviewed
-upstream commit in `upstream-input.json`, the source lockfile hash, tool versions, and the names,
-versions, filenames, and SHA-256 digests of packed `@superbee/cli` and `@superbee/core`. The tarballs
-sit beside `inputs.json`; missing pins or changed bytes fail before a build.
-
-To produce those inputs, a maintainer needs a clean checkout of `Holaxis-ai/superbee` at the exact
-commit in `upstream-input.json`, with access to that repository and its dependencies. Run this
-command from the Windows repository, passing the upstream checkout and an output directory:
-
-```sh
-npm run produce:inputs -- /absolute/path/to/upstream-checkout /absolute/path/to/inputs
-```
-
-The producer builds upstream and packs `@superbee/cli` and `@superbee/core`; its output directory
-contains `inputs.json` and both tarballs. The consumer commands above use that `inputs.json`.
-This producer/consumer path is the current maintainer workflow, not the pending registry build.
-
-The build consumes public package exports. It obtains the skill and reference resources from
-`@superbee/cli/resources` and bundles the CLI into one executable with zero runtime dependencies.
-The artifact remains a local development build, with its source identity reported honestly.
-No upstream checkout, source alias, workspace link, or source copy participates in this consumer
-build. Generated tarballs, resources, and build outputs are not committed.
+CI can transfer explicit inputs with `npm run registry:inputs -- /absolute/output/directory`,
+then run `npm run build -- --inputs /absolute/output/directory/inputs.json` and
+`npm run verify:package -- --inputs /absolute/output/directory/inputs.json`. The receiver checks
+its own lockfile, tarball bytes and signed evidence again. No-argument package verification uses
+the successful build's input receipt.
 
 ## Filesystem adapter without CLI startup
 
@@ -89,9 +87,10 @@ witness checks, and retry bounds. This adapter supplies Windows-specific observa
 
 ## Verification
 
-The workflow has three stages: a pinned upstream source job produces the package tarballs; a
-separate job checks out this repository and builds only from those tarballs; a Windows job installs
-and drives the exact resulting artifact on Node 20. The Windows job also exercises standalone core
+The workflow retains `inputs`, `consumer-build` and `native-installed`: registry inputs are verified,
+a separate consumer builds from the locked packages, and Windows installs and drives the exact
+resulting artifact on Node 20. `native-readme-build` independently checks out this repository, runs
+the exact README block, and proves its own resulting tarball. Native jobs also exercise standalone core
 CAS, verbatim PowerShell board recovery, and shell-token behavior. Its installed scenarios cover
 catalog operations, local Git sharing, UI lifecycle, managed workers and Chrome rendering, MCP
 registration, renamed executable ownership, foreign-receipt refusal, private-state junction
@@ -106,9 +105,10 @@ First-party Superbee releases do not depend on this repository's CI or package p
 
 ## Upstream drift
 
-The separate weekly Upstream drift workflow resolves upstream `main` once to an immutable commit,
-temporarily repins disposable checkouts, and attempts package production and a separate consumer
-build. The summary reports the old pin, candidate, and each build result. A stale pin reports red
+The separate weekly Upstream drift workflow resolves each package's `next` tag once to an exact
+version and integrity, temporarily repins disposable checkouts, and attempts a separate consumer
+build using the exact candidate manifest and lock bytes. The summary reports the old pair, candidate
+pair, integrity and each build result. A stale pin reports red
 even if the candidate builds; a current pin reports green only when both stages succeed. Resolution,
 network, and build failures report red. This check does not update the committed pin, push a branch,
 open an issue, publish packages, or gate first-party releases. Any accepted repin requires review

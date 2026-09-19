@@ -22,24 +22,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22.14.0
-      - name: Resolve the pinned upstream pin
-        id: pin
-        run: |
-          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('upstream-input.json')); if(!/^[a-f0-9]{40}$/.test(p.commit ?? '')) throw Error('pinned upstream commit is missing'); fs.appendFileSync(process.env.GITHUB_OUTPUT,'commit='+p.commit+'\n');"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: Holaxis-ai/superbee
-          ref: ${{ steps.pin.outputs.commit }}
-          path: upstream-source
-          persist-credentials: false
-      - name: Produce exact public package inputs
+      - name: Install locked build tools
+        run: npm ci --ignore-scripts --force --no-audit --no-fund
+      - name: Acquire and verify exact registry inputs
         id: produce
         run: |
-          npm run --silent produce:inputs -- upstream-source "$RUNNER_TEMP/inputs" > "$RUNNER_TEMP/producer.json"
+          npm run --silent registry:inputs -- "$RUNNER_TEMP/inputs" > "$RUNNER_TEMP/producer.json"
           node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/producer.json')); fs.appendFileSync(process.env.GITHUB_OUTPUT,'record_sha256='+p.recordSha256+'\n');"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: upstream-inputs
+          name: registry-inputs
           path: ${{ runner.temp }}/inputs
           if-no-files-found: error
   consumer-build:
@@ -58,7 +50,7 @@ jobs:
           cache: npm
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: upstream-inputs
+          name: registry-inputs
           path: inputs
       - name: Bind input record to the producer job
         env:
@@ -66,7 +58,6 @@ jobs:
         run: node scripts/check-digest.mjs inputs/inputs.json EXPECTED_INPUT_SHA256
       - name: Build only from installed tarballs and destination source
         run: |
-          test ! -e upstream-source
           npm ci --ignore-scripts --force --no-audit --no-fund
           npm test
           npm run build -- --inputs inputs/inputs.json
@@ -132,3 +123,74 @@ jobs:
           $env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path $prefix 'node_modules/@superbee/windows-cli/dist/superbee-windows.mjs'
           node out/windows-installed-package-proof.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  native-readme-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20
+      - name: Execute the README build block verbatim
+        shell: pwsh
+        run: |
+          node scripts/extract-readme-build.mjs "$env:RUNNER_TEMP/readme-build.ps1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/readme-build.ps1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bind this job's own artifact and native proof
+        id: proof
+        shell: pwsh
+        run: |
+          node scripts/prepare-native-proof.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $digest = (Get-FileHash -Algorithm SHA256 out/native-inputs.json).Hash.ToLowerInvariant()
+          "proof_sha256=$digest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Install and drive the exact Windows artifact
+        shell: pwsh
+        env:
+          EXPECTED_PROOF_SHA256: ${{ steps.proof.outputs.proof_sha256 }}
+        run: |
+          if (-not (node --version).StartsWith('v20.')) { throw 'Node 20 is not active' }
+          $bytes = [System.IO.File]::ReadAllBytes((Join-Path $pwd 'out/native-inputs.json'))
+          $digest = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+          if ($digest -ne $env:EXPECTED_PROOF_SHA256) { throw 'native input record digest changed' }
+          $record = Get-Content -Raw out/native-inputs.json | ConvertFrom-Json
+          foreach ($file in $record.files.psobject.Properties) {
+            if ($file.Name -notmatch '^[a-z0-9][a-z0-9.-]+$') { throw 'invalid proof filename' }
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $file.Name))).Hash.ToLowerInvariant() -ne $file.Value) { throw 'native proof script digest changed' }
+          }
+          if ($record.tarball -notmatch '^[a-z0-9][a-z0-9.-]+\.tgz$') { throw 'invalid tarball filename' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $record.tarball))).Hash.ToLowerInvariant() -ne $record.sha256) { throw 'native tarball digest changed' }
+          node out/check-native-inputs.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tarball = Join-Path $pwd ('out/' + $record.tarball)
+          Push-Location out
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock --no-save (Join-Path $pwd $record.coreTarball)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node native-adapters.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          $prefix = Join-Path $env:RUNNER_TEMP 'installed-superbee-windows'
+          New-Item -ItemType Directory -Force $prefix | Out-Null
+          Set-Content -LiteralPath (Join-Path $prefix 'superbee.cmd') -Value '@echo first-party-sentinel' -NoNewline
+          npm install --global $tarball --prefix $prefix --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Content -Raw (Join-Path $prefix 'superbee.cmd')) -ne '@echo first-party-sentinel') { throw 'existing first-party bin changed' }
+          $cli = Join-Path $prefix 'superbee-windows.cmd'
+          if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) { throw 'renamed npm shim missing' }
+          & $cli --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:SUPERBEE_WINDOWS_INSTALLED_PREFIX = $prefix
+          $env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path $prefix 'node_modules/@superbee/windows-cli/dist/superbee-windows.mjs'
+          node out/windows-installed-package-proof.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: readme-windows-package
+          path: out/
+          if-no-files-found: error

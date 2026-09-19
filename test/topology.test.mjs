@@ -8,8 +8,11 @@ const contract=JSON.parse(await readFile(new URL('./native-proof.json',import.me
 test('Windows CI separates pinned producer, tarball-only consumer and exact native install',()=>validateTopology(workflow));
 test('CI red probes reject missing provenance, source shortcuts, skipped native lifecycle and changed bin',()=>{
  for(const [from,to] of [
-  ['ref: ${{ steps.pin.outputs.commit }}','ref: main'],
+  ['npm run --silent registry:inputs','echo skipped-inputs'],
   ['needs: inputs','needs: []'],
+  ['node scripts/extract-readme-build.mjs','echo skipped-readme'],
+  ['& "$env:RUNNER_TEMP/readme-build.ps1"','Write-Output skipped-readme'],
+  ['node scripts/prepare-native-proof.mjs','echo skipped-proof'],
   ['needs: consumer-build','needs: consumer-build\n    if: false'],
   ['node scripts/check-digest.mjs inputs/inputs.json EXPECTED_INPUT_SHA256','echo unchecked'],
   ['native tarball digest changed','ignored'],
