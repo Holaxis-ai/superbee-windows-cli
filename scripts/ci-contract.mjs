@@ -29,6 +29,12 @@ function nativeRuns(job) {
   assert.match(step,/^        shell: pwsh$/m,'native run blocks must use pwsh');
   runs.push(match[1]);
  }
+ // This known workflow uses only simple quotes balanced on each physical line.
+ // Reject multiline strings before digest removal; other quoting/escaping shapes
+ // require contract review rather than interpreting general PowerShell syntax.
+ for(const script of runs) for(const line of script.split('\n')) {
+  for(const quote of ["'",'"']) assert.equal((line.split(quote).length-1) % 2,0,'native script quotes must balance on each line');
+ }
  // The sole multiline control structure is the exact digest block. Remove it
  // before checking the remaining brace-bearing lines against known statements.
  requireDigestChecks(job,runs);

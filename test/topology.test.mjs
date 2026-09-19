@@ -41,6 +41,12 @@ for(const [job,commands] of [
  ['native-installed',['node out/check-native-inputs.mjs','node native-adapters.mjs','& $cli --version','node out/windows-installed-package-proof.mjs']],
  ['native-readme-build',['npm test','node out/check-native-inputs.mjs','node native-adapters.mjs','& $cli --version','node out/windows-installed-package-proof.mjs']],
 ]) for(const command of commands) {
+ for(const quote of ["'",'"']) test(`${job}: rejects multiline ${quote} string around ${command}`,()=>{
+  const original=execution(command);
+  const replacement=indent+'$null = '+quote+'\n'+original+indent+quote+'\n';
+  const mutated=mutateJob(job,original,replacement);
+  assert.throws(()=>validateTopology(mutated),/native script quotes must balance on each line/);
+ });
  const invocation=indent+command+'\n';
  for(const [name,replacement] of [
   ['deleted invocation',guard],
@@ -66,6 +72,16 @@ for(const [job,commands] of [
  });
 }
 for(const job of ['native-installed','native-readme-build']) {
+ test(`${job}: rejects multiline double-quoted digest block`,()=>{
+  const block=jobBlock(workflow,job);
+  const first=block.indexOf(indent+'$bytes =');
+  const last=block.indexOf(indent+'node out/check-native-inputs.mjs');
+  assert.ok(first>=0 && last>first,'digest block boundaries must exist');
+  const original=block.slice(first,last);
+  const replacement=indent+'$null = "\n'+original+indent+'"\n';
+  const mutated=mutateJob(job,original,replacement);
+  assert.throws(()=>validateTopology(mutated),/native script quotes must balance on each line/);
+ });
  for(const message of ['native input record digest changed','native proof script digest changed','native tarball digest changed']) {
   const statement=jobBlock(workflow,job).split('\n').find(line=>line.includes(message))+'\n';
   for(const [name,replacement] of [
