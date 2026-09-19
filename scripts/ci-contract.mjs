@@ -19,6 +19,17 @@ const digestBlock=[
   "if ($record.tarball -notmatch '^[a-z0-9][a-z0-9.-]+\\.tgz$') { throw 'invalid tarball filename' }",
   "if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $record.tarball))).Hash.ToLowerInvariant() -ne $record.sha256) { throw 'native tarball digest changed' }",
  ].map(line=>indent+line+'\n').join('');
+// Reviewed workflow-script fixtures, separate from the immutable native proof
+// source digest. Any native run-block edit requires conscious contract review;
+// never derive these expected fingerprints from the workflow during tests.
+const nativeScriptDigests={
+ 'native-installed':['6d1f4da76b0d0aa3e69875eff00ef37766c5c06df7e1fa6634b91f1ee771c4f2'],
+ 'native-readme-build':[
+  'c780bf30b7735313f96c97ab48f1c2d29a1a19cc550abe4db60913ce03e7334e',
+  '030e1878c3c9080242d226d9efa149eba680718a4224d2c675c250bace218208',
+  '6d1f4da76b0d0aa3e69875eff00ef37766c5c06df7e1fa6634b91f1ee771c4f2',
+ ],
+};
 // This contract deliberately supports the repository's literal pwsh run blocks,
 // not arbitrary YAML or PowerShell. A structural change needs contract review.
 function nativeRuns(job) {
@@ -28,28 +39,6 @@ function nativeRuns(job) {
   if(!match) continue;
   assert.match(step,/^        shell: pwsh$/m,'native run blocks must use pwsh');
   runs.push(match[1]);
- }
- // This known workflow uses only simple quotes balanced on each physical line.
- // Reject multiline strings before digest removal; other quoting/escaping shapes
- // require contract review rather than interpreting general PowerShell syntax.
- for(const script of runs) for(const line of script.split('\n')) {
-  for(const quote of ["'",'"']) assert.equal((line.split(quote).length-1) % 2,0,'native script quotes must balance on each line');
- }
- // The sole multiline control structure is the exact digest block. Remove it
- // before checking the remaining brace-bearing lines against known statements.
- requireDigestChecks(job,runs);
- const controls=new Set([
-  exitGuard,
-  "if (-not (node --version).StartsWith('v20.')) { throw 'Node 20 is not active' }",
-  "if ((Get-Content -Raw (Join-Path $prefix 'superbee.cmd')) -ne '@echo first-party-sentinel') { throw 'existing first-party bin changed' }",
-  "if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) { throw 'renamed npm shim missing' }",
- ].map(line=>indent+line));
- for(const script of runs) {
-  const remainder=('\n'+script).replace('\n'+digestBlock,'\n');
-  for(const line of remainder.split('\n')) {
-   if(/[{}]/.test(line)) assert.ok(controls.has(line),'unexpected native control line outside digest proof-files loop');
-   assert.doesNotMatch(line,/<#|#>|@['"]|['"]@\s*$/,'native scripts must remain literal commands');
-  }
  }
  return runs;
 }
@@ -111,4 +100,9 @@ export function validateTopology(workflow) {
  assert.doesNotMatch(workflow,/^\s*(?:- +)?(?:if|"if"|'if')\s*:/m,'native CI cannot contain YAML conditionals');
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
+ // Targeted checks above explain missing commands, guards, digests and order.
+ // The final byte contract catches other literal-script edits without parsing pwsh.
+ for(const [name,expected] of Object.entries(nativeScriptDigests))
+  assert.deepEqual(nativeRuns(jobs[name]).map(sha256),expected,`${name}: native literal script contract changed; review script bytes and fingerprints together`);
+
 }
