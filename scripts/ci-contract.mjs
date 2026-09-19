@@ -19,16 +19,12 @@ const digestBlock=[
   "if ($record.tarball -notmatch '^[a-z0-9][a-z0-9.-]+\\.tgz$') { throw 'invalid tarball filename' }",
   "if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pwd ('out/' + $record.tarball))).Hash.ToLowerInvariant() -ne $record.sha256) { throw 'native tarball digest changed' }",
  ].map(line=>indent+line+'\n').join('');
-// Reviewed workflow-script fixtures, separate from the immutable native proof
-// source digest. Any native run-block edit requires conscious contract review;
-// never derive these expected fingerprints from the workflow during tests.
-const nativeScriptDigests={
- 'native-installed':['6d1f4da76b0d0aa3e69875eff00ef37766c5c06df7e1fa6634b91f1ee771c4f2'],
- 'native-readme-build':[
-  'c780bf30b7735313f96c97ab48f1c2d29a1a19cc550abe4db60913ce03e7334e',
-  '030e1878c3c9080242d226d9efa149eba680718a4224d2c675c250bace218208',
-  '6d1f4da76b0d0aa3e69875eff00ef37766c5c06df7e1fa6634b91f1ee771c4f2',
- ],
+// Complete reviewed native-job fixtures, separate from the immutable native
+// proof source digest. Any job edit requires conscious contract review; never
+// derive these expected fingerprints from the workflow during tests.
+const nativeJobDigests={
+ 'native-installed':'96f9ae46136d4cfc2d75f6b6668d94ed712c4370c584308e49e1d21d7498d967',
+ 'native-readme-build':'ac38bee7591a0fb725baee5f9bf7e6c0ba01f64b2fad7f8a36685aecd013f383',
 };
 // This contract deliberately supports the repository's literal pwsh run blocks,
 // not arbitrary YAML or PowerShell. A structural change needs contract review.
@@ -101,8 +97,8 @@ export function validateTopology(workflow) {
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
  // Targeted checks above explain missing commands, guards, digests and order.
- // The final byte contract catches other literal-script edits without parsing pwsh.
- for(const [name,expected] of Object.entries(nativeScriptDigests))
-  assert.deepEqual(nativeRuns(jobs[name]).map(sha256),expected,`${name}: native literal script contract changed; review script bytes and fingerprints together`);
-
+ // Pin the complete jobs, including all steps, env and execution metadata;
+ // the diagnostic run extractor does not define the final acceptance boundary.
+ for(const [name,expected] of Object.entries(nativeJobDigests))
+  assert.equal(sha256(jobs[name]),expected,`${name}: native job contract changed; review job bytes and fingerprints together`);
 }

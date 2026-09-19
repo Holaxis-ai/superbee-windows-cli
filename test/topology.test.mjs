@@ -49,12 +49,12 @@ for(const [job,commands] of [
   const original=execution(command);
   const replacement=indent+'$null = '+quote+'\n'+original+indent+quote+'\n';
   const mutated=mutateJob(job,original,replacement);
-  assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
  });
  test(`${job}: rejects mixed-even quote wrapper around ${command}`,()=>{
   const original=execution(command);
   const mutated=mutateJob(job,original,mixedQuoteWrapper(original));
-  assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
  });
  const invocation=indent+command+'\n';
  for(const [name,replacement] of [
@@ -77,10 +77,25 @@ for(const [job,commands] of [
  ]) test(`${job}: ${command}: rejects ${name}`,()=>{
   const mutated=mutateJob(job,execution(command),replacement);
   assert.throws(()=>validateTopology(mutated),error=>
-   error.message.includes('native literal script contract changed') || error.message.includes(`${command} must execute`),name);
+   error.message.includes('native job contract changed') || error.message.includes(`${command} must execute`),name);
  });
 }
 for(const job of ['native-installed','native-readme-build']) {
+ for(const [name,addition] of [
+  ['inline run','      - name: Extra inline step\n        shell: pwsh\n        run: Write-Output added\n'],
+  ['literal strip run','      - name: Extra strip step\n        shell: pwsh\n        run: |-\n          Write-Output added\n'],
+  ['folded run','      - name: Extra folded step\n        shell: pwsh\n        run: >\n          Write-Output added\n'],
+  ['action','      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020\n'],
+ ]) test(`${job}: rejects added ${name}`,()=>{
+  const original='    steps:\n';
+  const mutated=mutateJob(job,original,original+addition);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
+ });
+ test(`${job}: rejects added job environment`,()=>{
+  const original='    steps:\n';
+  const mutated=mutateJob(job,original,'    env:\n      NODE_OPTIONS: --no-warnings\n'+original);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
+ });
  test(`${job}: rejects mixed-even quoted digest block`,()=>{
   const block=jobBlock(workflow,job);
   const first=block.indexOf(indent+'$bytes =');
@@ -88,7 +103,7 @@ for(const job of ['native-installed','native-readme-build']) {
   assert.ok(first>=0 && last>first,'digest block boundaries must exist');
   const original=block.slice(first,last);
   const mutated=mutateJob(job,original,mixedQuoteWrapper(original));
-  assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
  });
  test(`${job}: rejects multiline double-quoted digest block`,()=>{
   const block=jobBlock(workflow,job);
@@ -98,7 +113,7 @@ for(const job of ['native-installed','native-readme-build']) {
   const original=block.slice(first,last);
   const replacement=indent+'$null = "\n'+original+indent+'"\n';
   const mutated=mutateJob(job,original,replacement);
-  assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
  });
  for(const message of ['native input record digest changed','native proof script digest changed','native tarball digest changed']) {
   const statement=jobBlock(workflow,job).split('\n').find(line=>line.includes(message))+'\n';
@@ -158,12 +173,12 @@ for(const command of ['npm test','node scripts/extract-readme-build.mjs "$env:RU
   const original=execution(command);
   const replacement=indent+'foreach ($file in $record.files.psobject.Properties) {\n'+original+indent+'}\n';
   const mutated=mutateJob('native-readme-build',original,replacement);
-  assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
  });
 test('native-readme-build: even a harmless script comment requires contract review',()=>{
  const original=execution('npm test');
  const mutated=mutateJob('native-readme-build',original,indent+'# Harmless comment\n'+original);
- assert.throws(()=>validateTopology(mutated),/native literal script contract changed/);
+ assert.throws(()=>validateTopology(mutated),/native job contract changed/);
 });
 test('reviewed native lifecycle bytes and required scenarios cannot silently disappear',()=>{
  verifyNativeProofDigest(proof,contract.sha256);
