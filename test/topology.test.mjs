@@ -218,3 +218,35 @@ test('reviewed native lifecycle bytes and required scenarios cannot silently dis
 test('every native proof byte mutation fails its digest, including detached scenario calls',()=>{
  for(const mutated of [Buffer.concat([proof,Buffer.from('\n')]),Buffer.from(proof.toString().replace('await runScenario','void runScenario'))]) assert.throws(()=>verifyNativeProofDigest(mutated,contract.sha256));
 });
+
+for(const [name,from,to] of [
+ ['missing dependency','needs: [inputs, consumer-build, native-installed, native-readme-build]','needs: [inputs, consumer-build, native-installed]'],
+ ['missing always','    if: always()\n',''],
+ ['success-only condition','if: always()','if: success()'],
+ ['mutable public action pin',/Holaxis-ai\/superbee\/\.github\/actions\/ci-gate@[a-f0-9]{40}/,'Holaxis-ai/superbee/.github/actions/ci-gate@main'],
+ ['wrong public action path',/Holaxis-ai\/superbee\/\.github\/actions\/ci-gate@[a-f0-9]{40}/,`Holaxis-ai/superbee/.github/actions/other@${'a'.repeat(40)}`],
+ ['partial results','toJSON(needs)','toJSON(needs.inputs)'],
+ ['optional native proof','{"job":"native-installed","required":true}','{"job":"native-installed","required":false}'],
+ ['missing policy job','              {"job":"native-readme-build","required":true}\n',''],
+ ['masked gate','    name: CI required lanes','    name: CI required lanes\n    continue-on-error: true'],
+ ['conditional action','      - uses: Holaxis-ai/','      - if: success()\n        uses: Holaxis-ai/'],
+ ['missing Node setup','          node-version: 22\n',''],
+]) test(`aggregate rejects ${name}`,()=>{
+ const original=jobBlock(workflow,'gate');
+ const changed=original.replace(from,to);
+ assert.notEqual(changed,original,'mutation must change aggregate');
+ const mutated=workflow.replace(original,()=>changed);
+ assert.throws(()=>validateTopology(mutated));
+});
+for(const job of ['inputs','consumer-build','native-installed','native-readme-build']) {
+ test(`${job}: aggregate action exception does not apply to proof jobs`,()=>{
+  const original=jobBlock(workflow,job);
+  const changed=original.replace(/actions\/[a-z-]+@[a-f0-9]{40}/,`Holaxis-ai/superbee/.github/actions/ci-gate@${'a'.repeat(40)}`);
+  assert.notEqual(changed,original);
+  assert.throws(()=>validateTopology(workflow.replace(original,()=>changed)));
+ });
+ test(`${job}: proof job must remain unconditional`,()=>{
+  const mutated=mutateJob(job,'    steps:\n','    if: always()\n    steps:\n');
+  assert.throws(()=>validateTopology(mutated));
+ });
+}
