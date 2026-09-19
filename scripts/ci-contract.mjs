@@ -22,6 +22,8 @@ const digestBlock=[
 // Complete reviewed native-job fixtures, separate from the immutable native
 // proof source digest. Any job edit requires conscious contract review; never
 // derive these expected fingerprints from the workflow during tests.
+// Workflow-level environment, defaults and triggers also affect native evidence.
+const workflowPreambleDigest='a7cbc2de900056a5a7b7a11f421f685b9c02462bcb4695bc0f2ba7bf77217158';
 const nativeJobDigests={
  'native-installed':'96f9ae46136d4cfc2d75f6b6668d94ed712c4370c584308e49e1d21d7498d967',
  'native-readme-build':'ac38bee7591a0fb725baee5f9bf7e6c0ba01f64b2fad7f8a36685aecd013f383',
@@ -50,7 +52,11 @@ function requireDigestChecks(job, runs) {
 }
 export function validateTopology(workflow) {
  const jobs={};
- const jobText=workflow.slice(workflow.indexOf('\njobs:\n')+7);
+ const boundary='\njobs:\n';
+ const jobsStart=workflow.indexOf(boundary);
+ assert.ok(jobsStart>0 && jobsStart===workflow.lastIndexOf(boundary),'workflow must contain exactly one literal jobs boundary');
+ const preamble=workflow.slice(0,jobsStart);
+ const jobText=workflow.slice(jobsStart+boundary.length);
  for(const match of jobText.matchAll(/^  ([a-z][a-z-]+):\n([\s\S]*?)(?=^  [a-z][a-z-]+:\n|$(?![\s\S]))/gm)) jobs[match[1]]=match[2];
  assert.deepEqual(Object.keys(jobs),['inputs','consumer-build','native-installed','native-readme-build']);
  assert.doesNotMatch(workflow,/repository:\s*Holaxis-ai\/superbee\s*\n|upstream-source|produce:inputs/);
@@ -97,8 +103,10 @@ export function validateTopology(workflow) {
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
  // Targeted checks above explain missing commands, guards, digests and order.
- // Pin the complete jobs, including all steps, env and execution metadata;
- // the diagnostic run extractor does not define the final acceptance boundary.
+ // Pin inherited workflow context plus complete native jobs. Job-local env and
+ // steps are covered by job fixtures; inherited env, defaults and triggers are
+ // covered by the preamble fixture. Intentional edits require fingerprint review.
+ assert.equal(sha256(preamble),workflowPreambleDigest,'workflow preamble contract changed; review inherited context and fingerprint together');
  for(const [name,expected] of Object.entries(nativeJobDigests))
   assert.equal(sha256(jobs[name]),expected,`${name}: native job contract changed; review job bytes and fingerprints together`);
 }

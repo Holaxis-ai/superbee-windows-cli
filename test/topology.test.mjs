@@ -180,6 +180,33 @@ test('native-readme-build: even a harmless script comment requires contract revi
  const mutated=mutateJob('native-readme-build',original,indent+'# Harmless comment\n'+original);
  assert.throws(()=>validateTopology(mutated),/native job contract changed/);
 });
+function mutatePreamble(from,to) {
+ const boundary='\njobs:\n';
+ assert.equal(workflow.split(boundary).length,2,'baseline must have one jobs boundary');
+ const [preamble,jobs]=workflow.split(boundary);
+ assert.equal(preamble.split(from).length-1,1,'preamble mutation target must be unique');
+ const changed=preamble.replace(from,()=>to);
+ assert.notEqual(changed,preamble,'preamble mutation must change bytes');
+ const mutated=changed+boundary+jobs;
+ for(const job of ['inputs','consumer-build','native-installed','native-readme-build'])
+  assert.equal(jobBlock(mutated,job),jobBlock(workflow,job),`${job} must remain unchanged`);
+ return mutated;
+}
+for(const [name,from,to] of [
+ ['inherited NODE_OPTIONS skips tests','name: Windows distribution proof','name: Windows distribution proof\nenv:\n  NODE_OPTIONS: --test-only'],
+ ['inherited run defaults','name: Windows distribution proof','name: Windows distribution proof\ndefaults:\n  run:\n    working-directory: out'],
+ ['manual-only trigger',"on:\n  pull_request:\n  push:\n    branches: [main, 'feature/**']\n  workflow_dispatch:",'on:\n  workflow_dispatch:'],
+]) test(`workflow preamble: rejects ${name} without modifying jobs`,()=>{
+ const mutated=mutatePreamble(from,to);
+ assert.throws(()=>validateTopology(mutated),/workflow preamble contract changed/);
+});
+for(const [name,replacement] of [['missing','\nnot-jobs:\n'],['duplicate','\njobs:\njobs:\n']])
+ test(`workflow preamble: rejects ${name} jobs boundary`,()=>{
+  assert.equal(workflow.split('\njobs:\n').length,2);
+  const mutated=workflow.replace('\njobs:\n',()=>replacement);
+  assert.notEqual(mutated,workflow);
+  assert.throws(()=>validateTopology(mutated),/workflow must contain exactly one literal jobs boundary/);
+ });
 test('reviewed native lifecycle bytes and required scenarios cannot silently disappear',()=>{
  verifyNativeProofDigest(proof,contract.sha256);
  const source=proof.toString();
