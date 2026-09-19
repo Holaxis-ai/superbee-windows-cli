@@ -50,6 +50,8 @@ for(const [job,commands] of [
   ['conditional invocation',indent+'if ($false) { '+command+' }\n'+guard],
   ['multiline conditional',indent+'if ($false) {\n'+execution(command).replace(/^/gm,'  ').trimEnd()+'\n'+indent+'}\n'],
   ['unindented conditional',indent+'if ($false) {\n'+execution(command)+indent+'}\n'],
+  ['nested conditional opener',indent+'if ($false) { if ($true) { }\n'+execution(command)+indent+'}\n'],
+  ['comment-brace conditional opener',indent+'if ($false) { # }\n'+execution(command)+indent+'}\n'],
   ['commented exit check',invocation+guard.replace('if (','# if (')],
   ['disabled exit check',invocation+guard.replace('$LASTEXITCODE -ne 0','$false')],
   ['inverted exit check',invocation+guard.replace('-ne','-eq')],
@@ -58,7 +60,9 @@ for(const [job,commands] of [
   ['overwritten exit status',invocation+indent+'node --version\n'+guard],
   ['exit check before invocation',guard+invocation],
  ]) test(`${job}: ${command}: rejects ${name}`,()=>{
-  assert.throws(()=>validateTopology(mutateJob(job,execution(command),replacement)),name);
+  const mutated=mutateJob(job,execution(command),replacement);
+  assert.throws(()=>validateTopology(mutated),error=>
+   error.message.includes('unexpected native control') || error.message.includes(`${command} must execute`),name);
  });
 }
 for(const job of ['native-installed','native-readme-build']) {
@@ -69,11 +73,13 @@ for(const job of ['native-installed','native-readme-build']) {
    ['disabled comparison',statement.replace(/if \(.*\) \{ throw/, 'if ($false) { throw')],
    ['non-terminating',statement.replace('throw ', 'Write-Output ')],
   ]) test(`${job}: ${message}: rejects ${name} statement`,()=>{
-   assert.throws(()=>validateTopology(mutateJob(job,statement,replacement)),/native record, helper and tarball digest checks/);
+   const mutated=mutateJob(job,statement,replacement);
+   assert.throws(()=>validateTopology(mutated),/native record, helper and tarball digest checks/);
   });
  }
  test(`${job}: rejects changing its renamed executable`,()=>{
-  assert.throws(()=>validateTopology(mutateJob(job,"$cli = Join-Path $prefix 'superbee-windows.cmd'","$cli = Join-Path $prefix 'superbee.cmd'")));
+  const mutated=mutateJob(job,"$cli = Join-Path $prefix 'superbee-windows.cmd'","$cli = Join-Path $prefix 'superbee.cmd'");
+  assert.throws(()=>validateTopology(mutated));
  });
  for(const destination of ['          npm install --ignore-scripts','          npm install --global'])
   test(`${job}: rejects validation after ${destination.trim()}`,()=>{
@@ -82,12 +88,14 @@ for(const job of ['native-installed','native-readme-build']) {
    assert.equal(block.split(install).length-1,1,'install destination must be unique');
    assert.equal(block.split(execution('node out/check-native-inputs.mjs')).length-1,1,'validation must be unique');
    const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(install,()=>install+execution('node out/check-native-inputs.mjs'));
-   assert.throws(()=>validateTopology(mutateJob(job,block,changed)),/native digest checks and validation must precede/);
+   const mutated=mutateJob(job,block,changed);
+   assert.throws(()=>validateTopology(mutated),/native digest checks and validation must precede/);
   });
  test(`${job}: rejects validation before digest checks`,()=>{
   const block=jobBlock(workflow,job);
   const changed=block.replace(execution('node out/check-native-inputs.mjs'),'').replace(indent+'$bytes =',()=>execution('node out/check-native-inputs.mjs')+indent+'$bytes =');
-  assert.throws(()=>validateTopology(mutateJob(job,block,changed)),/native digest checks and validation must precede/);
+  const mutated=mutateJob(job,block,changed);
+  assert.throws(()=>validateTopology(mutated),/native digest checks and validation must precede/);
  });
 }
 for(const [name,anchor] of [['before README execution','& "$env:RUNNER_TEMP/readme-build.ps1"'],['after artifact preparation','node scripts/prepare-native-proof.mjs']])
@@ -96,7 +104,8 @@ for(const [name,anchor] of [['before README execution','& "$env:RUNNER_TEMP/read
   const target=execution(anchor);
   assert.equal(block.split(target).length-1,1);
   const moved=block.replace(execution('npm test'),'').replace(target,()=>name.startsWith('before')?execution('npm test')+target:target+execution('npm test'));
-  assert.throws(()=>validateTopology(mutateJob('native-readme-build',block,moved)),/README execution and tests must precede/);
+  const mutated=mutateJob('native-readme-build',block,moved);
+  assert.throws(()=>validateTopology(mutated),/README execution and tests must precede/);
  });
 for(const [job,step] of [
  ['native-installed','Install and drive the exact Windows artifact'],
@@ -107,13 +116,15 @@ for(const [job,step] of [
  test(`${job}: rejects ${key} conditional ${first?'first':'later'} key on ${step}`,()=>{
   const original=`      - name: ${step}\n`;
   const replacement=first?`      - ${key}: false\n        name: ${step}\n`:`${original}        ${key}: false\n`;
-  assert.throws(()=>validateTopology(mutateJob(job,original,replacement)),/YAML conditionals/);
+  const mutated=mutateJob(job,original,replacement);
+  assert.throws(()=>validateTopology(mutated),/YAML conditionals/);
  });
 for(const command of ['npm test','node scripts/extract-readme-build.mjs "$env:RUNNER_TEMP/readme-build.ps1"','& "$env:RUNNER_TEMP/readme-build.ps1"','node scripts/prepare-native-proof.mjs'])
  test(`native-readme-build: rejects zero-iteration proof loop around ${command}`,()=>{
   const original=execution(command);
   const replacement=indent+'foreach ($file in $record.files.psobject.Properties) {\n'+original+indent+'}\n';
-  assert.throws(()=>validateTopology(mutateJob('native-readme-build',original,replacement)),/proof-files loop/);
+  const mutated=mutateJob('native-readme-build',original,replacement);
+  assert.throws(()=>validateTopology(mutated),/proof-files loop/);
  });
 test('reviewed native lifecycle bytes and required scenarios cannot silently disappear',()=>{
  verifyNativeProofDigest(proof,contract.sha256);
