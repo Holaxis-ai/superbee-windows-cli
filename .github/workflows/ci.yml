@@ -194,3 +194,23 @@ jobs:
           name: readme-windows-package
           path: out/
           if-no-files-found: error
+  gate:
+    name: CI required lanes
+    needs: [inputs, consumer-build, native-installed, native-readme-build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - uses: Holaxis-ai/superbee/.github/actions/ci-gate@41ee3f689e590be668aee886104aecbf3fe1f12e
+        with:
+          needs-json: '${{ toJSON(needs) }}'
+          policy-json: >-
+            [
+              {"job":"inputs","required":true},
+              {"job":"consumer-build","required":true},
+              {"job":"native-installed","required":true},
+              {"job":"native-readme-build","required":true}
+            ]

@@ -50,6 +50,18 @@ function requireDigestChecks(job, runs) {
  assert.equal(runs.filter(run=>('\n'+run).includes('\n'+digestBlock)).length,1,'native record, helper and tarball digest checks must execute and throw on mismatch');
  return job.indexOf(digestBlock)+digestBlock.length;
 }
+// Only this literal aggregate shape may use the public action. Keeping the
+// exception here leaves proof-job action allowlists and unconditionality intact.
+function validateAggregate(gate) {
+ const match=gate.match(/^    name: CI required lanes\n    needs: \[inputs, consumer-build, native-installed, native-readme-build\]\n    if: always\(\)\n    runs-on: ubuntu-latest\n    timeout-minutes: 2\n    steps:\n      - uses: actions\/setup-node@[a-f0-9]{40}\n        with:\n          node-version: 22\n      - uses: Holaxis-ai\/superbee\/\.github\/actions\/ci-gate@[a-f0-9]{40}\n        with:\n          needs-json: '\$\{\{ toJSON\(needs\) \}\}'\n          policy-json: >-\n([\s\S]+)$/);
+ assert.ok(match,'aggregate must always evaluate every proof job using the immutable public gate');
+ assert.deepEqual(JSON.parse(match[1]),[
+  {job:'inputs',required:true},
+  {job:'consumer-build',required:true},
+  {job:'native-installed',required:true},
+  {job:'native-readme-build',required:true},
+ ]);
+}
 export function validateTopology(workflow) {
  const jobs={};
  const boundary='\njobs:\n';
@@ -58,12 +70,20 @@ export function validateTopology(workflow) {
  const preamble=workflow.slice(0,jobsStart);
  const jobText=workflow.slice(jobsStart+boundary.length);
  for(const match of jobText.matchAll(/^  ([a-z][a-z-]+):\n([\s\S]*?)(?=^  [a-z][a-z-]+:\n|$(?![\s\S]))/gm)) jobs[match[1]]=match[2];
- assert.deepEqual(Object.keys(jobs),['inputs','consumer-build','native-installed','native-readme-build']);
+ assert.deepEqual(Object.keys(jobs),['inputs','consumer-build','native-installed','native-readme-build','gate']);
  assert.doesNotMatch(workflow,/repository:\s*Holaxis-ai\/superbee\s*\n|upstream-source|produce:inputs/);
  assert.match(jobs.inputs,/npm run --silent registry:inputs/);
  assert.match(workflow,/permissions:\n  contents: read/);
  for(const job of Object.values(jobs)) assert.match(job,/timeout-minutes: [1-9][0-9]?\n/);
- for(const match of workflow.matchAll(/uses: ([^\n]+)/g)) assert.match(match[1],/^actions\/[a-z-]+@[a-f0-9]{40}$/);
+ for(const [name,job] of Object.entries(jobs)) {
+  for(const match of job.matchAll(/uses: ([^\n]+)/g)) {
+   const allowed=name==='gate'
+    ? /^(?:actions\/[a-z-]+|Holaxis-ai\/superbee\/\.github\/actions\/ci-gate)@[a-f0-9]{40}$/
+    : /^actions\/[a-z-]+@[a-f0-9]{40}$/;
+   assert.match(match[1],allowed);
+  }
+ }
+ validateAggregate(jobs.gate);
  assert.match(jobs['consumer-build'],/needs: inputs/);
  assert.doesNotMatch(jobs['consumer-build'],/repository:\s*Holaxis-ai\/superbee\s*\n|ref:\s*main/);
  assert.match(jobs['consumer-build'],/EXPECTED_INPUT_SHA256: \$\{\{ needs.inputs.outputs.record_sha256 \}\}/);
@@ -99,7 +119,8 @@ export function validateTopology(workflow) {
  assert.match(native,/existing first-party bin changed/);
  assert.match(native,/\$env:SUPERBEE_WINDOWS_INSTALLED_ENTRYPOINT = Join-Path \$prefix 'node_modules\/@superbee\/windows-cli\/dist\/superbee-windows.mjs'/);
  }
- assert.doesNotMatch(workflow,/^\s*(?:- +)?(?:if|"if"|'if')\s*:/m,'native CI cannot contain YAML conditionals');
+ for(const name of ['inputs','consumer-build','native-installed','native-readme-build'])
+  assert.doesNotMatch(jobs[name],/^\s*(?:- +)?(?:if|"if"|'if')\s*:/m,'proof jobs cannot contain YAML conditionals');
  assert.doesNotMatch(workflow,/continue-on-error|npm (?:publish|stage)|id-token: write|exit 0/m);
  assert.doesNotMatch(native,/git clone|upstream-source/);
  // Targeted checks above explain missing commands, guards, digests and order.
